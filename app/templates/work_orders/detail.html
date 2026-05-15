@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}{{ wo.name }} — CrossConnect{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Column group header tints */
+.th-device      { background-color: #1a3020 !important; }
+.th-dev-patch   { background-color: #3a2a10 !important; }
+.th-sw-patch    { background-color: #0d2236 !important; }
+.th-switch      { background-color: #27103a !important; }
+
+/* Cell tints in expanded rows */
+.td-device      { background-color: rgba(30,58,47,.45) !important; }
+.td-dev-patch   { background-color: rgba(58,42,26,.45) !important; }
+.td-sw-patch    { background-color: rgba(13,34,54,.45) !important; }
+.td-switch      { background-color: rgba(39,16,58,.45) !important; }
+
+/* Fabric row tints */
+tr.fabric-a > td { background-color: rgba(59,130,246,.07); }
+tr.fabric-b > td { background-color: rgba(245,158,11,.07); }
+
+/* Inline cell inputs */
+.grid-input {
+  background: transparent; border: none; color: inherit;
+  width: 100%; min-width: 60px; font-size: .8rem;
+  padding: 2px 4px; border-radius: 3px;
+}
+.grid-input:focus {
+  background: var(--cc-navy); outline: 1px solid var(--cc-accent);
+}
+.grid-select {
+  background: transparent; border: none; color: inherit;
+  font-size: .8rem; padding: 2px 4px; width: 100%;
+  border-radius: 3px; cursor: pointer;
+}
+.grid-select:focus { background: var(--cc-navy); outline: 1px solid var(--cc-accent); }
+select.grid-select option { background: var(--cc-navy-light); }
+
+/* Row dirty indicator */
+tr.row-dirty td:first-child::before {
+  content: '●'; color: #fd7e14; font-size: .6rem;
+  position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+}
+tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
+
+/* Cable length cells */
+.seg-length { font-family: monospace; font-size: .78rem; white-space: nowrap; }
+.seg-cross   { color: #94a3b8; }
+.seg-incomplete { color: #fd7e14; }
+.seg-exceeds    { color: #dc3545; }
+
+/* Collapsed/expanded column visibility */
+.col-patch { display: none; }
+.grid-expanded .col-patch { display: table-cell; }
+.col-extra { display: none; }
+.grid-expanded .col-extra { display: table-cell; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-2 small">
+  <a href="/work-orders" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Work Orders</a>
+</div>
+
+{% if error %}<div class="alert alert-danger small py-2 mb-3">{{ error }}</div>{% endif %}
+
+<!-- Header bar -->
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h4 class="fw-bold mb-0">{{ wo.name }}</h4>
+    <div class="text-muted small mt-1">
+      <span class="badge bg-secondary mono me-1">{{ wo.datacenter.code }}</span>
+      <span class="me-2">{{ wo.work_type|capitalize }}</span>
+      {% if wo.target_date %}<span><i class="bi bi-calendar3 me-1"></i>{{ wo.target_date.strftime('%Y-%m-%d') }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    <span class="badge badge-status-{{ wo.status }} fs-6">{{ wo.status|replace('_',' ')|title }}</span>
+
+    {% if user.role in ['architect','admin'] %}
+      {% if wo.status == 'draft' %}
+        <form method="post" action="/work-orders/{{ wo.id }}/status" class="d-inline">
+          <input type="hidden" name="new_status" value="issued">
+          <button class="btn btn-success btn-sm"><i class="bi bi-send me-1"></i>Issue Work Order</button>
+        </form>
+        <a href="/work-orders/{{ wo.id }}/edit" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-pencil me-1"></i>Edit
+        </a>
+      {% elif wo.status == 'issued' %}
+        <form method="post" action="/work-orders/{{ wo.id }}/status" class="d-inline">
+          <input type="hidden" name="new_status" value="draft">
+          <button class="btn btn-outline-warning btn-sm"><i class="bi bi-arrow-counterclockwise me-1"></i>Pull Back to Draft</button>
+        </form>
+      {% elif wo.status == 'in_progress' %}
+        <form method="post" action="/work-orders/{{ wo.id }}/status" class="d-inline">
+          <input type="hidden" name="new_status" value="complete">
+          <button class="btn btn-success btn-sm" onclick="return confirm('Mark this work order complete? R-action rows will be soft-deleted.')">
+            <i class="bi bi-check-circle me-1"></i>Mark Complete
+          </button>
+        </form>
+      {% endif %}
+      {% if wo.status in ['draft','issued','in_progress'] %}
+        <form method="post" action="/work-orders/{{ wo.id }}/status" class="d-inline">
+          <input type="hidden" name="new_status" value="cancelled">
+          <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Cancel this work order?')">Cancel</button>
+        </form>
+      {% endif %}
+    {% endif %}
+
+    {% if user.role == 'dc_tech' and wo.status == 'issued' %}
+      <form method="post" action="/work-orders/{{ wo.id }}/status" class="d-inline">
+        <input type="hidden" name="new_status" value="in_progress">
+        <button class="btn cc-btn-primary btn-sm"><i class="bi bi-play-fill me-1"></i>Start Work</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Grid toolbar -->
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2" id="grid-toolbar">
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+
+    {% if user.role in ['architect','admin'] and wo.status in ['draft','issued'] %}
+    <!-- Add rows -->
+    <div class="btn-group btn-group-sm" role="group" aria-label="Add rows">
+      <span class="btn btn-outline-secondary disabled pe-none" style="cursor:default">Add rows:</span>
+      {% for n in [1,2,4,8] %}
+      <button type="button" class="btn btn-outline-secondary" onclick="addRows({{ n }})">{{ n }}</button>
+      {% endfor %}
+    </div>
+
+    <!-- Import CSV/TSV -->
+    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+      <i class="bi bi-upload me-1"></i>Import CSV/TSV
+    </button>
+
+    <!-- Save all dirty rows -->
+    <button class="btn cc-btn-primary btn-sm" id="save-btn" onclick="saveAllDirty()" disabled>
+      <i class="bi bi-floppy me-1"></i>Save Changes
+    </button>
+    {% endif %}
+  </div>
+
+  <div class="d-flex gap-2 align-items-center">
+    <!-- Expand/Collapse toggle -->
+    <button class="btn btn-outline-secondary btn-sm" id="expand-btn" onclick="toggleExpand()">
+      <i class="bi bi-arrows-expand me-1"></i>Expand Columns
+    </button>
+    <span class="text-muted small">{{ connections|length }} row(s)</span>
+  </div>
+</div>
+
+<!-- Connection grid -->
+<div class="table-responsive" style="max-height: calc(100vh - 260px); overflow-y: auto;">
+<table class="table table-hover table-sm mb-0 small table-sticky-head" id="conn-grid" style="min-width: 900px;">
+  <thead id="grid-head">
+    <!-- Group header row -->
+    <tr class="text-uppercase" style="font-size:.65rem;letter-spacing:.05em">
+      <th colspan="2" class="th-device">Core</th>
+      <th colspan="6" class="th-device">Device Side</th>
+      <th colspan="4" class="th-dev-patch col-patch">Device Patch</th>
+      <th colspan="4" class="th-sw-patch col-patch">Switch Patch</th>
+      <th colspan="6" class="th-switch">Switch Side</th>
+      <th colspan="2" class="col-extra">Extra</th>
+      <th colspan="3">Cable Lengths</th>
+      <th colspan="2">Install</th>
+      <th></th>
+    </tr>
+    <!-- Column header row -->
+    <tr style="font-size:.72rem">
+      <th class="th-device">Action</th>
+      <th class="th-device">Fabric</th>
+      <th class="th-device">System</th>
+      <th class="th-device">Device</th>
+      <th class="th-device">Rack</th>
+      <th class="th-device">U</th>
+      <th class="th-device">Slot</th>
+      <th class="th-device">Port</th>
+      <th class="th-dev-patch col-patch">Rack</th>
+      <th class="th-dev-patch col-patch">RU</th>
+      <th class="th-dev-patch col-patch">Mod</th>
+      <th class="th-dev-patch col-patch">Port</th>
+      <th class="th-sw-patch col-patch">Rack</th>
+      <th class="th-sw-patch col-patch">RU</th>
+      <th class="th-sw-patch col-patch">Mod</th>
+      <th class="th-sw-patch col-patch">Port</th>
+      <th class="th-switch">Switch</th>
+      <th class="th-switch">Rack</th>
+      <th class="th-switch">U</th>
+      <th class="th-switch">Slot</th>
+      <th class="th-switch">Port</th>
+      <th class="th-switch">Type</th>
+      <th class="col-extra">VLAN/VSAN</th>
+      <th class="col-extra">Comments</th>
+      <th title="Device→Patch">Seg1</th>
+      <th title="Patch→Patch">Seg2</th>
+      <th title="Patch→Switch">Seg3</th>
+      <th>Status</th>
+      <th>Notes</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody id="conn-body">
+  {% for c in connections %}
+  {% set can_edit = user.role in ["architect","admin"] and wo.status in ["draft","issued"] %}
+  {% include "work_orders/_conn_row.html" %}
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<!-- Import CSV/TSV Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content" style="background:var(--cc-navy-light);border-color:var(--cc-navy-border)">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold">Import Rows from CSV/TSV</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" x-data="csvImporter()">
+        <p class="text-muted small mb-3">
+          Upload a CSV or TSV file. Columns are matched by header name (case-insensitive).
+          Required headers: <span class="mono">ACTION, CABLE_TYPE, PURPOSE, DEVICE_RACK, DEVICE_RACK_U, DEVICE_SLOT, DEVICE_PORT, SWITCH_RACK, SWITCH_RACK_U, SWITCH_SLOT, SWITCH_PORT</span>
+        </p>
+
+        <div x-show="!preview.length">
+          <label class="form-label small fw-semibold">Select CSV or TSV file</label>
+          <input type="file" class="form-control" accept=".csv,.tsv,.txt"
+                 @change="parseFile($event)">
+        </div>
+
+        <div x-show="preview.length > 0">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="small fw-semibold" x-text="`${preview.length} rows parsed`"></span>
+            <button class="btn btn-outline-secondary btn-sm" @click="reset()">
+              <i class="bi bi-x-lg me-1"></i>Clear
+            </button>
+          </div>
+          <div class="table-responsive" style="max-height:280px;overflow-y:auto">
+            <table class="table table-sm small mb-0" style="font-size:.75rem">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <template x-for="h in headers" :key="h"><th x-text="h"></th></template>
+                  <th>Valid</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="(row,i) in preview" :key="i">
+                  <tr :class="row._errors?.length ? 'table-danger' : ''">
+                    <td x-text="i+1"></td>
+                    <template x-for="h in headers" :key="h">
+                      <td x-text="row[h] || ''"></td>
+                    </template>
+                    <td>
+                      <span x-show="!row._errors?.length" class="text-success"><i class="bi bi-check-circle-fill"></i></span>
+                      <span x-show="row._errors?.length" class="text-danger" :title="row._errors?.join(', ')">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                      </span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <div x-show="importResult" class="alert small py-2 mt-2"
+               :class="importResult?.skipped?.length ? 'alert-warning' : 'alert-success'" x-text="importResult?.message"></div>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0" x-data>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn cc-btn-primary btn-sm"
+                x-show="document.querySelector('[x-data]')"
+                @click="$dispatch('import-submit')"
+                x-bind:disabled="!preview?.length">
+          <i class="bi bi-upload me-1"></i>Import <span x-text="preview?.length || ''"></span> rows
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Alpine data for the importer lives in app.js (csvImporter component) -->
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const WO_ID = {{ wo.id }};
+const CAN_EDIT = {{ 'true' if user.role in ['architect','admin'] and wo.status in ['draft','issued'] else 'false' }};
+const CABLE_TYPES = {{ CABLE_TYPES | tojson }};
+const PURPOSES    = {{ PURPOSES | tojson }};
+const ACTIONS     = {{ ACTIONS | tojson }};
+const FABRICS     = {{ FABRICS | tojson }};
+const INSTALL_STATUSES = {{ INSTALL_STATUSES | tojson }};
+</script>
+<script src="/static/js/grid.js"></script>
+{% endblock %}

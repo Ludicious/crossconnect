@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{% if wo %}Edit {{ wo.name }}{% else %}New Work Order{% endif %} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/work-orders" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Work Orders</a>
+  {% if wo %}/ <a href="/work-orders/{{ wo.id }}" class="text-muted text-decoration-none">{{ wo.name }}</a>{% endif %}
+</div>
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">
+    {% if wo %}Edit: {{ wo.name }}{% else %}New Work Order{% endif %}
+  </div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Work Order Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" name="name"
+                 value="{{ wo.name if wo else '' }}" required autofocus
+                 placeholder="e.g. HDC-2024-001 Storage Install">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Datacenter <span class="text-danger">*</span></label>
+          <select class="form-select" name="datacenter_id" required>
+            {% for dc in datacenters %}
+            <option value="{{ dc.id }}"
+              {% if wo and wo.datacenter_id == dc.id %}selected
+              {% elif not wo and loop.first %}selected{% endif %}>
+              {{ dc.name }} ({{ dc.code }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Work Type <span class="text-danger">*</span></label>
+          <select class="form-select" name="work_type">
+            {% for t in work_types %}
+            <option value="{{ t }}" {% if wo and wo.work_type == t %}selected{% elif not wo and t=='install' %}selected{% endif %}>
+              {{ t|capitalize }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Target Date <span class="text-muted fw-normal">(optional)</span></label>
+          <input type="date" class="form-control" name="target_date"
+                 value="{{ wo.target_date.isoformat() if wo and wo.target_date else '' }}">
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" name="notes" rows="2">{{ wo.notes if wo and wo.notes else '' }}</textarea>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn cc-btn-primary">
+          {% if wo %}Save Changes{% else %}Create Work Order{% endif %}
+        </button>
+        <a href="{% if wo %}/work-orders/{{ wo.id }}{% else %}/work-orders{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

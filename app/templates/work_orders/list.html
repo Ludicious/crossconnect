@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Work Orders — CrossConnect{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="fw-bold mb-0"><i class="bi bi-clipboard-check me-2 text-primary"></i>Work Orders</h4>
+  {% if user.role in ['architect','admin'] %}
+  <a href="/work-orders/new" class="btn cc-btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>New Work Order
+  </a>
+  {% endif %}
+</div>
+
+<!-- Filters -->
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body py-2">
+    <form class="row g-2 align-items-center" method="get">
+      <div class="col-auto">
+        <select class="form-select form-select-sm" name="dc_id">
+          <option value="">All Datacenters</option>
+          {% for dc in datacenters %}
+          <option value="{{ dc.id }}" {% if filter_dc_id == dc.id %}selected{% endif %}>{{ dc.name }} ({{ dc.code }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <select class="form-select form-select-sm" name="status">
+          <option value="">All Statuses</option>
+          {% for s in ['draft','issued','in_progress','complete','cancelled'] %}
+          <option value="{{ s }}" {% if filter_status == s %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">Filter</button>
+        <a href="/work-orders" class="btn btn-outline-secondary btn-sm ms-1">Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if work_orders %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 small">
+      <thead>
+        <tr>
+          <th>Name</th><th>DC</th><th>Type</th><th>Status</th>
+          <th>Connections</th><th>Target Date</th><th>Created By</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for wo in work_orders %}
+      <tr>
+        <td>
+          <a href="/work-orders/{{ wo.id }}" class="text-decoration-none text-light fw-semibold">{{ wo.name }}</a>
+        </td>
+        <td><span class="badge bg-secondary mono">{{ wo.datacenter.code }}</span></td>
+        <td class="text-muted">{{ wo.work_type }}</td>
+        <td>
+          <span class="badge badge-status-{{ wo.status }}">{{ wo.status|replace('_',' ')|title }}</span>
+        </td>
+        <td>{{ wo.connections|selectattr('deleted_at','none')|list|length }}</td>
+        <td class="text-muted">{{ wo.target_date.strftime('%Y-%m-%d') if wo.target_date else '—' }}</td>
+        <td class="text-muted">{{ wo.creator.display_name }}</td>
+        <td class="text-end">
+          <a href="/work-orders/{{ wo.id }}" class="btn btn-outline-secondary btn-sm py-0 px-2">Open</a>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info border-0 small">
+  <i class="bi bi-info-circle me-2"></i>No work orders found.
+  {% if user.role in ['architect','admin'] %}<a href="/work-orders/new">Create one.</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}
