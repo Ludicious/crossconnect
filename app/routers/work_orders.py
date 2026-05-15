@@ -155,9 +155,11 @@ async def wo_status(
         return RedirectResponse(f"/work-orders/{wo_id}", status_code=302)
     except ValueError as e:
         connections = svc.list_connections(db, wo_id)
+        row_errors = getattr(e, "row_errors", [])
         return _tpl(request, "work_orders/detail.html", {
             "request": request, "user": user, "wo": wo,
             "connections": connections, "error": str(e),
+            "validation_errors": row_errors,
             "CABLE_TYPES": ["RJ45", "LC_Fiber", "DAC", "other"],
             "PURPOSES": ["management", "data", "storage", "other"],
             "ACTIONS": ["A", "R", "C"], "FABRICS": ["", "A", "B"],

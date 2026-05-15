@@ -91,7 +91,10 @@ def transition_status(db: Session, wo: WorkOrder, new_status: str, user: User) -
     if new_status == "issued":
         errors = _validate_all_connections(db, wo.id)
         if errors:
-            raise ValueError(f"{len(errors)} connection row(s) have validation errors. Fix them before issuing.")
+            # Attach detail to the exception so the router can pass it to the template
+            exc = ValueError(f"{len(errors)} connection row(s) have validation errors. Fix them before issuing.")
+            exc.row_errors = errors  # list of {id, errors}
+            raise exc
 
     # On complete: soft-delete all R-action connections
     if new_status == "complete":

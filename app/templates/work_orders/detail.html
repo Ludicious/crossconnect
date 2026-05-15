@@ -156,10 +156,10 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
   <thead id="grid-head">
     <!-- Group header row -->
     <tr class="text-uppercase" style="font-size:.65rem;letter-spacing:.05em">
-      <th colspan="2" class="th-device">Core</th>
+      <th colspan="3" class="th-device">Core</th>
       <th colspan="6" class="th-device">Device Side</th>
-      <th colspan="4" class="th-dev-patch col-patch">Device Patch</th>
-      <th colspan="4" class="th-sw-patch col-patch">Switch Patch</th>
+      <th colspan="5" class="th-dev-patch col-patch">Device Patch</th>
+      <th colspan="5" class="th-sw-patch col-patch">Switch Patch</th>
       <th colspan="6" class="th-switch">Switch Side</th>
       <th colspan="2" class="col-extra">Extra</th>
       <th colspan="3">Cable Lengths</th>
@@ -170,6 +170,7 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
     <tr style="font-size:.72rem">
       <th class="th-device">Action</th>
       <th class="th-device">Fabric</th>
+      <th class="th-device">Purpose</th>
       <th class="th-device">System</th>
       <th class="th-device">Device</th>
       <th class="th-device">Rack</th>
@@ -178,10 +179,12 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
       <th class="th-device">Port</th>
       <th class="th-dev-patch col-patch">Rack</th>
       <th class="th-dev-patch col-patch">RU</th>
+      <th class="th-dev-patch col-patch">Side</th>
       <th class="th-dev-patch col-patch">Mod</th>
       <th class="th-dev-patch col-patch">Port</th>
       <th class="th-sw-patch col-patch">Rack</th>
       <th class="th-sw-patch col-patch">RU</th>
+      <th class="th-sw-patch col-patch">Side</th>
       <th class="th-sw-patch col-patch">Mod</th>
       <th class="th-sw-patch col-patch">Port</th>
       <th class="th-switch">Switch</th>
@@ -197,6 +200,7 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
       <th title="Patch→Switch">Seg3</th>
       <th>Status</th>
       <th>Notes</th>
+      <th title="Validation errors"></th>
       <th></th>
     </tr>
   </thead>
@@ -289,6 +293,7 @@ const WO_ID = {{ wo.id }};
 const CAN_EDIT = {{ 'true' if user.role in ['architect','admin'] and wo.status in ['draft','issued'] else 'false' }};
 const CABLE_TYPES = {{ CABLE_TYPES | tojson }};
 const PURPOSES    = {{ PURPOSES | tojson }};
+const VALIDATION_ERRORS = {{ validation_errors | tojson if validation_errors is defined else "[]" }};
 const ACTIONS     = {{ ACTIONS | tojson }};
 const FABRICS     = {{ FABRICS | tojson }};
 const INSTALL_STATUSES = {{ INSTALL_STATUSES | tojson }};

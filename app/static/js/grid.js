@@ -53,12 +53,14 @@ function buildEmptyRow() {
   const actionOpts = ACTIONS.map(a => `<option value="${a}">${a}</option>`).join('');
   const fabricOpts = FABRICS.map(f => `<option value="${f}">${f || '—'}</option>`).join('');
   const cableOpts  = CABLE_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+  const purposeOpts = PURPOSES.map(p => `<option value="${p}">${p}</option>`).join('');
   const statusOpts = INSTALL_STATUSES.map(s => `<option value="${s}">${s.replace('_',' ')}</option>`).join('');
 
   return `
 <tr class="conn-row row-dirty" id="newrow-${seq}" data-id="new" data-seq="${seq}" data-dirty="true">
   <td class="td-device"><select class="grid-select conn-field" data-field="action" onchange="markDirty(this)">${actionOpts}</select></td>
   <td class="td-device"><select class="grid-select conn-field" data-field="fabric" onchange="markDirty(this);updateFabricTint(this)">${fabricOpts}</select></td>
+  <td class="td-device"><select class="grid-select conn-field" data-field="purpose" onchange="markDirty(this)">${purposeOpts}</select></td>
   <td class="td-device"><input class="grid-input conn-field" data-field="system_name_raw" oninput="markDirty(this)" placeholder="System"></td>
   <td class="td-device"><input class="grid-input conn-field" data-field="device_name_raw" oninput="markDirty(this)" placeholder="Device"></td>
   <td class="td-device"><input class="grid-input conn-field" data-field="device_rack_name_raw" oninput="markDirty(this)" placeholder="Rack*"></td>
@@ -67,10 +69,12 @@ function buildEmptyRow() {
   <td class="td-device"><input class="grid-input conn-field mono" data-field="device_port" oninput="markDirty(this)" style="max-width:52px" placeholder="Port*"></td>
   <td class="td-dev-patch col-patch"><input class="grid-input conn-field" data-field="device_patch_rack_name_raw" oninput="markDirty(this)"></td>
   <td class="td-dev-patch col-patch"><input class="grid-input conn-field" data-field="device_patch_ru" type="number" min="1" max="54" oninput="markDirty(this)" style="max-width:52px"></td>
+  <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_side" oninput="markDirty(this)" style="max-width:36px" placeholder="L/R"></td>
   <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_module" oninput="markDirty(this)" style="max-width:48px"></td>
   <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_port" oninput="markDirty(this)" style="max-width:48px"></td>
   <td class="td-sw-patch col-patch"><input class="grid-input conn-field" data-field="switch_patch_rack_name_raw" oninput="markDirty(this)"></td>
   <td class="td-sw-patch col-patch"><input class="grid-input conn-field" data-field="switch_patch_ru" type="number" min="1" max="54" oninput="markDirty(this)" style="max-width:52px"></td>
+  <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_side" oninput="markDirty(this)" style="max-width:36px" placeholder="L/R"></td>
   <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_module" oninput="markDirty(this)" style="max-width:48px"></td>
   <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_port" oninput="markDirty(this)" style="max-width:48px"></td>
   <td class="td-switch"><input class="grid-input conn-field" data-field="switch_name_raw" oninput="markDirty(this)" placeholder="Switch"></td>
@@ -79,6 +83,11 @@ function buildEmptyRow() {
   <td class="td-switch"><input class="grid-input conn-field mono" data-field="switch_slot" oninput="markDirty(this)" style="max-width:52px" placeholder="Slot*"></td>
   <td class="td-switch"><input class="grid-input conn-field mono" data-field="switch_port" oninput="markDirty(this)" style="max-width:52px" placeholder="Port*"></td>
   <td class="td-switch"><select class="grid-select conn-field" data-field="cable_type" onchange="markDirty(this)">${cableOpts}</select></td>
+  <input type="hidden" class="conn-field" data-field="device_serial" value="">
+  <input type="hidden" class="conn-field" data-field="device_grid" value="">
+  <input type="hidden" class="conn-field" data-field="switch_serial" value="">
+  <input type="hidden" class="conn-field" data-field="switch_grid" value="">
+  <input type="hidden" class="conn-field" data-field="port_description" value="">
   <td class="col-extra"><input class="grid-input conn-field mono" data-field="vlan_vsan" oninput="markDirty(this)"></td>
   <td class="col-extra"><input class="grid-input conn-field" data-field="comments" oninput="markDirty(this)"></td>
   <td class="seg-length text-muted">—</td>
@@ -86,6 +95,7 @@ function buildEmptyRow() {
   <td class="seg-length text-muted">—</td>
   <td><select class="grid-select conn-field" data-field="install_status" onchange="markDirty(this)">${statusOpts}</select></td>
   <td><input class="grid-input conn-field" data-field="install_notes" oninput="markDirty(this)"></td>
+  <td class="row-error-cell text-danger" style="white-space:nowrap;min-width:20px" title=""></td>
   <td class="text-end">
     <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Remove unsaved row"
             onclick="removeNewRow(this)">
@@ -410,4 +420,56 @@ document.addEventListener('DOMContentLoaded', () => {
         modalBody._x_dataStack[0].submit();
       }
     });
+});
+
+// ── Issue-time validation error highlighting ──────────────────────────────
+// VALIDATION_ERRORS is injected by the template as:
+//   [{id: 3, errors: ["DEVICE RACK U must be 1–54", ...]}, ...]
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof VALIDATION_ERRORS === 'undefined' || !VALIDATION_ERRORS.length) return;
+
+  VALIDATION_ERRORS.forEach(({id, errors}) => {
+    const row = document.getElementById(`row-${id}`);
+    if (!row) return;
+
+    // Red left border on the row
+    row.style.borderLeft = '3px solid #dc3545';
+
+    // Populate the error indicator cell with a tooltip icon
+    const errCell = row.querySelector('.row-error-cell');
+    if (errCell) {
+      errCell.innerHTML = '<i class="bi bi-exclamation-triangle-fill text-danger"></i>';
+      errCell.title = errors.join('\n');
+      errCell.style.cursor = 'help';
+    }
+
+    // Highlight specific fields that have errors
+    const fieldMap = {
+      'ACTION':           'action',
+      'CABLE TYPE':       'cable_type',
+      'PURPOSE':          'purpose',
+      'DEVICE RACK':      'device_rack_name_raw',
+      'DEVICE RACK U':    'device_rack_u',
+      'DEVICE SLOT':      'device_slot',
+      'DEVICE PORT':      'device_port',
+      'SWITCH RACK':      'switch_rack_name_raw',
+      'SWITCH RACK U':    'switch_rack_u',
+      'SWITCH SLOT':      'switch_slot',
+      'SWITCH PORT':      'switch_port',
+    };
+    errors.forEach(msg => {
+      Object.entries(fieldMap).forEach(([label, field]) => {
+        if (msg.includes(label)) {
+          const el = row.querySelector(`[data-field="${field}"]`);
+          if (el) el.style.outline = '2px solid #dc3545';
+        }
+      });
+    });
+  });
+
+  // Scroll the first error row into view
+  const firstErrorId = VALIDATION_ERRORS[0]?.id;
+  if (firstErrorId) {
+    document.getElementById(`row-${firstErrorId}`)?.scrollIntoView({behavior:'smooth', block:'center'});
+  }
 });

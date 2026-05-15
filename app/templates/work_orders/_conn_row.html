@@ -21,32 +21,43 @@
     {% else %}{{ c.fabric or '—' }}{% endif %}
   </td>
 
+  {# Purpose — mandatory, in collapsed view #}
+  <td class="td-device">
+    {% if can_edit | default(false) %}
+    <select class="grid-select conn-field" data-field="purpose" onchange="markDirty(this)">
+      {% for p in PURPOSES %}<option value="{{ p }}" {% if c.purpose == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+    </select>
+    {% else %}<span class="text-muted small">{{ c.purpose }}</span>{% endif %}
+  </td>
+
   {# Device side #}
-  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="system_name_raw" value="{{ c.system_name_raw or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)"></td>
-  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_name_raw" value="{{ c.device_name_raw or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)"></td>
-  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_rack_name_raw" value="{{ c.device_rack_name_raw or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)"></td>
-  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_rack_u" type="number" min="1" max="54" value="{{ c.device_rack_u or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="min-width:40px;max-width:52px"></td>
-  <td class="td-device"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_slot" value="{{ c.device_slot or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px"></td>
-  <td class="td-device"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_port" value="{{ c.device_port or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px"></td>
+  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="system_name_raw"       value="{{ c.system_name_raw or '' }}"       {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" placeholder="System"></td>
+  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_name_raw"       value="{{ c.device_name_raw or '' }}"       {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" placeholder="Device"></td>
+  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_rack_name_raw"   value="{{ c.device_rack_name_raw or '' }}"   {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" placeholder="Rack *"></td>
+  <td class="td-device"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_rack_u"          value="{{ c.device_rack_u or '' }}"         {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" type="number" min="1" max="54" style="max-width:52px" placeholder="U *"></td>
+  <td class="td-device"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_slot"       value="{{ c.device_slot or '' }}"           {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px" placeholder="Slot *"></td>
+  <td class="td-device"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="device_port"       value="{{ c.device_port or '' }}"           {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px" placeholder="Port *"></td>
 
   {# Device patch (hidden until expanded) #}
   <td class="td-dev-patch col-patch"><input class="grid-input conn-field" data-field="device_patch_rack_name_raw" value="{{ c.device_patch_rack_name_raw or '' }}" oninput="markDirty(this)"></td>
-  <td class="td-dev-patch col-patch"><input class="grid-input conn-field" data-field="device_patch_ru" type="number" min="1" max="54" value="{{ c.device_patch_ru or '' }}" oninput="markDirty(this)" style="max-width:52px"></td>
-  <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_module" value="{{ c.device_patch_module or '' }}" oninput="markDirty(this)" style="max-width:48px"></td>
-  <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_port" value="{{ c.device_patch_port or '' }}" oninput="markDirty(this)" style="max-width:48px"></td>
+  <td class="td-dev-patch col-patch"><input class="grid-input conn-field" data-field="device_patch_ru"           value="{{ c.device_patch_ru or '' }}"           oninput="markDirty(this)" type="number" min="1" max="54" style="max-width:52px"></td>
+  <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_side"    value="{{ c.device_patch_side or '' }}"         oninput="markDirty(this)" style="max-width:36px" placeholder="L/R"></td>
+  <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_module"  value="{{ c.device_patch_module or '' }}"       oninput="markDirty(this)" style="max-width:48px"></td>
+  <td class="td-dev-patch col-patch"><input class="grid-input conn-field mono" data-field="device_patch_port"    value="{{ c.device_patch_port or '' }}"         oninput="markDirty(this)" style="max-width:48px"></td>
 
   {# Switch patch (hidden until expanded) #}
   <td class="td-sw-patch col-patch"><input class="grid-input conn-field" data-field="switch_patch_rack_name_raw" value="{{ c.switch_patch_rack_name_raw or '' }}" oninput="markDirty(this)"></td>
-  <td class="td-sw-patch col-patch"><input class="grid-input conn-field" data-field="switch_patch_ru" type="number" min="1" max="54" value="{{ c.switch_patch_ru or '' }}" oninput="markDirty(this)" style="max-width:52px"></td>
-  <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_module" value="{{ c.switch_patch_module or '' }}" oninput="markDirty(this)" style="max-width:48px"></td>
-  <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_port" value="{{ c.switch_patch_port or '' }}" oninput="markDirty(this)" style="max-width:48px"></td>
+  <td class="td-sw-patch col-patch"><input class="grid-input conn-field" data-field="switch_patch_ru"            value="{{ c.switch_patch_ru or '' }}"            oninput="markDirty(this)" type="number" min="1" max="54" style="max-width:52px"></td>
+  <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_side"     value="{{ c.switch_patch_side or '' }}"          oninput="markDirty(this)" style="max-width:36px" placeholder="L/R"></td>
+  <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_module"   value="{{ c.switch_patch_module or '' }}"        oninput="markDirty(this)" style="max-width:48px"></td>
+  <td class="td-sw-patch col-patch"><input class="grid-input conn-field mono" data-field="switch_patch_port"     value="{{ c.switch_patch_port or '' }}"          oninput="markDirty(this)" style="max-width:48px"></td>
 
   {# Switch side #}
-  <td class="td-switch"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_name_raw" value="{{ c.switch_name_raw or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)"></td>
-  <td class="td-switch"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_rack_name_raw" value="{{ c.switch_rack_name_raw or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)"></td>
-  <td class="td-switch"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_rack_u" type="number" min="1" max="54" value="{{ c.switch_rack_u or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="min-width:40px;max-width:52px"></td>
-  <td class="td-switch"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_slot" value="{{ c.switch_slot or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px"></td>
-  <td class="td-switch"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_port" value="{{ c.switch_port or '' }}" {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px"></td>
+  <td class="td-switch"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_name_raw"      value="{{ c.switch_name_raw or '' }}"      {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" placeholder="Switch"></td>
+  <td class="td-switch"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_rack_name_raw"  value="{{ c.switch_rack_name_raw or '' }}"  {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" placeholder="Rack *"></td>
+  <td class="td-switch"><input class="grid-input conn-field {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_rack_u"         value="{{ c.switch_rack_u or '' }}"        {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" type="number" min="1" max="54" style="max-width:52px" placeholder="U *"></td>
+  <td class="td-switch"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_slot"      value="{{ c.switch_slot or '' }}"          {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px" placeholder="Slot *"></td>
+  <td class="td-switch"><input class="grid-input conn-field mono {% if not can_edit | default(false) %}pe-none{% endif %}" data-field="switch_port"      value="{{ c.switch_port or '' }}"          {% if not can_edit | default(false) %}readonly{% endif %} oninput="markDirty(this)" style="max-width:52px" placeholder="Port *"></td>
   <td class="td-switch">
     {% if can_edit | default(false) %}
     <select class="grid-select conn-field" data-field="cable_type" onchange="markDirty(this)">
@@ -55,33 +66,35 @@
     {% else %}{{ c.cable_type }}{% endif %}
   </td>
 
-  {# Extra (hidden until expanded) #}
-  <td class="col-extra"><input class="grid-input conn-field mono" data-field="vlan_vsan" value="{{ c.vlan_vsan or '' }}" oninput="markDirty(this)"></td>
-  <td class="col-extra"><input class="grid-input conn-field" data-field="comments" value="{{ c.comments or '' }}" oninput="markDirty(this)"></td>
+  {# Extra fields — round-tripped silently even in collapsed mode #}
+  <input type="hidden" class="conn-field" data-field="device_serial"  value="{{ c.device_serial or '' }}">
+  <input type="hidden" class="conn-field" data-field="device_grid"    value="{{ c.device_grid or '' }}">
+  <input type="hidden" class="conn-field" data-field="switch_serial"  value="{{ c.switch_serial or '' }}">
+  <input type="hidden" class="conn-field" data-field="switch_grid"    value="{{ c.switch_grid or '' }}">
+  <input type="hidden" class="conn-field" data-field="port_description" value="{{ c.port_description or '' }}">
+
+  {# Visible expanded-only extras #}
+  <td class="col-extra"><input class="grid-input conn-field mono" data-field="vlan_vsan"  value="{{ c.vlan_vsan or '' }}"  oninput="markDirty(this)"></td>
+  <td class="col-extra"><input class="grid-input conn-field"      data-field="comments"   value="{{ c.comments or '' }}"   oninput="markDirty(this)"></td>
 
   {# Cable lengths (read-only) #}
-  <td class="seg-length {% if c.seg1_length == 'cross-cabinet' %}seg-cross{% elif c.seg1_length == 'incomplete' %}seg-incomplete{% elif c.seg1_length == 'exceeds_max' %}seg-exceeds{% endif %}">
-    {{ c.seg1_length or '—' }}
-  </td>
-  <td class="seg-length {% if c.seg2_length == 'cross-cabinet' %}seg-cross{% elif c.seg2_length == 'incomplete' %}seg-incomplete{% elif c.seg2_length == 'exceeds_max' %}seg-exceeds{% endif %}">
-    {{ c.seg2_length or '—' }}
-  </td>
-  <td class="seg-length {% if c.seg3_length == 'cross-cabinet' %}seg-cross{% elif c.seg3_length == 'incomplete' %}seg-incomplete{% elif c.seg3_length == 'exceeds_max' %}seg-exceeds{% endif %}">
-    {{ c.seg3_length or '—' }}
-  </td>
+  <td class="seg-length {% if c.seg1_length == 'cross-cabinet' %}seg-cross{% elif c.seg1_length in ['incomplete','exceeds_max'] %}seg-incomplete{% endif %}">{{ c.seg1_length or '—' }}</td>
+  <td class="seg-length {% if c.seg2_length == 'cross-cabinet' %}seg-cross{% elif c.seg2_length in ['incomplete','exceeds_max'] %}seg-incomplete{% endif %}">{{ c.seg2_length or '—' }}</td>
+  <td class="seg-length {% if c.seg3_length == 'cross-cabinet' %}seg-cross{% elif c.seg3_length in ['incomplete','exceeds_max'] %}seg-incomplete{% endif %}">{{ c.seg3_length or '—' }}</td>
 
-  {# Install status #}
+  {# Install status — saves immediately #}
   <td>
     <select class="grid-select conn-field" data-field="install_status"
-            onchange="saveInstallStatus(this, {{ c.id }})"
-            style="min-width:90px">
+            onchange="saveInstallStatus(this, {{ c.id }})" style="min-width:90px">
       {% for s in INSTALL_STATUSES %}
       <option value="{{ s }}" {% if c.install_status == s %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>
       {% endfor %}
     </select>
   </td>
-  <td><input class="grid-input conn-field" data-field="install_notes" value="{{ c.install_notes or '' }}"
-             oninput="markDirty(this)"></td>
+  <td><input class="grid-input conn-field" data-field="install_notes" value="{{ c.install_notes or '' }}" oninput="markDirty(this)"></td>
+
+  {# Row error indicator — populated by JS when issue validation fails #}
+  <td class="row-error-cell text-danger" style="white-space:nowrap;min-width:20px" title=""></td>
 
   {# Row actions #}
   <td class="text-end" style="white-space:nowrap">
