@@ -229,3 +229,18 @@ hr { border-color: var(--cc-navy-border); }
   color: var(--cc-accent);
   font-style: italic;
 }
+
+/* ── Cable length segment cells ─────────────────────────────────────────── */
+.seg-length {
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: .78rem;
+  white-space: nowrap;
+  text-align: right;
+  min-width: 52px;
+}
+
+/* Numeric value — append 'm' via CSS so it's clear without adding to the value */
+.seg-length.seg-numeric::after { content: 'm'; color: #64748b; margin-left: 1px; }
+.seg-cross     { color: #94a3b8; font-style: italic; font-size: .72rem; }
+.seg-incomplete{ color: #fb923c; }
+.seg-exceeds   { color: #f87171; font-weight: 600; }

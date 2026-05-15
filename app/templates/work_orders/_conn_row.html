@@ -91,10 +91,11 @@
        value="{{ c.lag_member_index or '' }}" oninput="markDirty(this)"
        type="number" min="1" style="max-width:44px" placeholder="#"></td>
 
-  {# Cable lengths (read-only) #}
-  <td class="seg-length {% if c.seg1_length == 'cross-cabinet' %}seg-cross{% elif c.seg1_length in ['incomplete','exceeds_max'] %}seg-incomplete{% endif %}">{{ c.seg1_length or '—' }}</td>
-  <td class="seg-length {% if c.seg2_length == 'cross-cabinet' %}seg-cross{% elif c.seg2_length in ['incomplete','exceeds_max'] %}seg-incomplete{% endif %}">{{ c.seg2_length or '—' }}</td>
-  <td class="seg-length {% if c.seg3_length == 'cross-cabinet' %}seg-cross{% elif c.seg3_length in ['incomplete','exceeds_max'] %}seg-incomplete{% endif %}">{{ c.seg3_length or '—' }}</td>
+  {# Cable lengths (read-only) — helper macro for class assignment #}
+  {% macro seg_class(v) %}seg-length {% if v == 'cross-cabinet' %}seg-cross{% elif v == 'incomplete' %}seg-incomplete{% elif v == 'exceeds_max' %}seg-exceeds{% elif v %}seg-numeric{% endif %}{% endmacro %}
+  <td class="{{ seg_class(c.seg1_length) }}" title="Device → Device Patch (or Device → Switch if no patches)">{{ c.seg1_length or '—' }}</td>
+  <td class="{{ seg_class(c.seg2_length) }}" title="Device Patch → Switch Patch">{{ c.seg2_length or '—' }}</td>
+  <td class="{{ seg_class(c.seg3_length) }}" title="Switch Patch → Switch">{{ c.seg3_length or '—' }}</td>
 
   {# Install status — saves immediately #}
   <td>

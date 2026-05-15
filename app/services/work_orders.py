@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
 
 from app.models.work_order import WorkOrder, VALID_STATUSES, VALID_WORK_TYPES
+from app.services.cable_length import calculate_and_store
 from app.models.connection import Connection, INSTALL_STATUSES, ACTIONS, CABLE_TYPES, PURPOSES
 from app.models.user import User
 
@@ -289,6 +290,8 @@ def create_connection(db: Session, wo_id: int, form_data: dict,
     db.add(conn)
     db.commit()
     db.refresh(conn)
+    # Compute cable lengths immediately after save
+    calculate_and_store(db, conn)
     return conn, [], warnings
 
 
@@ -315,6 +318,7 @@ def update_connection(db: Session, conn: Connection, form_data: dict,
 
     db.commit()
     db.refresh(conn)
+    calculate_and_store(db, conn)
     return conn, [], warnings
 
 
