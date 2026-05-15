@@ -256,6 +256,9 @@ def _conn_from_form(data: dict) -> dict:
         switch_port=data.get("switch_port", "").strip() or None,
         vlan_vsan=data.get("vlan_vsan", "").strip() or None,
         comments=data.get("comments", "").strip() or None,
+        lag_id=data.get("lag_id", "").strip() or None,
+        lag_member_index=_int(data.get("lag_member_index")),
+        fiber_mode=data.get("fiber_mode", "").strip() or None,
         install_status=data.get("install_status", "pending"),
     )
 

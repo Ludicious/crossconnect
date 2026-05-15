@@ -161,7 +161,7 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
       <th colspan="5" class="th-dev-patch col-patch">Device Patch</th>
       <th colspan="5" class="th-sw-patch col-patch">Switch Patch</th>
       <th colspan="6" class="th-switch">Switch Side</th>
-      <th colspan="2" class="col-extra">Extra</th>
+      <th colspan="5" class="col-extra">Extra</th>
       <th colspan="3">Cable Lengths</th>
       <th colspan="2">Install</th>
       <th></th>
@@ -195,6 +195,9 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
       <th class="th-switch">Type</th>
       <th class="col-extra">VLAN/VSAN</th>
       <th class="col-extra">Comments</th>
+      <th class="col-extra" title="Fiber Mode">Fiber</th>
+      <th class="col-extra" title="LAG/Port-Channel ID">LAG ID</th>
+      <th class="col-extra" title="LAG Member Index">Mbr</th>
       <th title="Device→Patch">Seg1</th>
       <th title="Patch→Patch">Seg2</th>
       <th title="Patch→Switch">Seg3</th>
@@ -293,6 +296,7 @@ const WO_ID = {{ wo.id }};
 const CAN_EDIT = {{ 'true' if user.role in ['architect','admin'] and wo.status in ['draft','issued'] else 'false' }};
 const CABLE_TYPES = {{ CABLE_TYPES | tojson }};
 const PURPOSES    = {{ PURPOSES | tojson }};
+const FIBER_MODES = ["singlemode","multimode"];
 const VALIDATION_ERRORS = {{ validation_errors | tojson if validation_errors is defined else "[]" }};
 const ACTIONS     = {{ ACTIONS | tojson }};
 const FABRICS     = {{ FABRICS | tojson }};

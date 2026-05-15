@@ -44,12 +44,64 @@
             </div>
           </div>
         </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Device Type
+            <span class="text-muted fw-normal">(optional — pre-fills height)</span>
+          </label>
+          <div x-data="autocomplete('/inventory/autocomplete/device-types', {{ device.device_type_id or 'null' }}, '{{ (device.device_type.manufacturer + ' ' + device.device_type.model) if device and device.device_type else '' }}')" class="position-relative">
+            <input type="text" class="form-control" x-model="query" @input.debounce.200="search()"
+                   @focus="search()" @blur="hide()" placeholder="Search manufacturer or model…"
+                   @x-picked="$refs.rack_u.value = $event.detail.rack_u || ''">
+            <input type="hidden" name="device_type_id" x-model="selectedId">
+            <div x-show="open && results.length" class="cc-dropdown">
+              <template x-for="r in results" :key="r.id">
+                <div class="cc-dropdown-item" @mousedown.prevent="pick(r); $dispatch('x-picked', r)">
+                  <span x-text="r.label"></span>
+                  <span class="badge bg-secondary ms-1 small" x-text="r.category"></span>
+                  <span class="text-muted small ms-1" x-show="r.rack_u" x-text="r.rack_u + 'U'"></span>
+                </div>
+              </template>
+              <div class="cc-dropdown-item cc-dropdown-create" x-show="query.length > 1"
+                   @mousedown.prevent="createNew()">
+                <i class="bi bi-plus-lg me-1"></i>Create: "<span x-text="query"></span>"
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Parent Device
+            <span class="text-muted fw-normal">(optional — for blades/modules in a chassis)</span>
+          </label>
+          <div x-data="autocomplete('/inventory/autocomplete/devices', {{ device.parent_device_id or 'null' }}, '{{ device.parent_device.name if device and device.parent_device else '' }}')" class="position-relative">
+            <input type="text" class="form-control" x-model="query" @input.debounce.200="search()"
+                   @focus="search()" @blur="hide()" placeholder="Search for chassis device…">
+            <input type="hidden" name="parent_device_id" x-model="selectedId">
+            <div x-show="open && results.length" class="cc-dropdown">
+              <template x-for="r in results" :key="r.id">
+                <div class="cc-dropdown-item" @mousedown.prevent="pick(r)">
+                  <span x-text="r.label"></span>
+                  <span class="text-muted small ms-1" x-text="r.rack"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
         <div class="col-md-4">
           <label class="form-label small fw-semibold">Starting U</label>
           <input type="number" class="form-control" name="starting_ru" min="1" max="54"
                  value="{{ device.starting_ru if device and device.starting_ru else '' }}">
         </div>
-        <div class="col-md-8">
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Slot #
+            <span class="text-muted fw-normal">(chassis slot)</span>
+          </label>
+          <input type="number" class="form-control" name="slot_number" min="1"
+                 value="{{ device.slot_number if device and device.slot_number else '' }}"
+                 placeholder="e.g. 3">
+        </div>
+        <div class="col-md-4">
           <label class="form-label small fw-semibold">Serial Number</label>
           <input type="text" class="form-control mono" name="serial"
                  value="{{ device.serial if device and device.serial else '' }}"

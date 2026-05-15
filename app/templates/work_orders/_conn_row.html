@@ -76,6 +76,20 @@
   {# Visible expanded-only extras #}
   <td class="col-extra"><input class="grid-input conn-field mono" data-field="vlan_vsan"  value="{{ c.vlan_vsan or '' }}"  oninput="markDirty(this)"></td>
   <td class="col-extra"><input class="grid-input conn-field"      data-field="comments"   value="{{ c.comments or '' }}"   oninput="markDirty(this)"></td>
+  <td class="col-extra">
+    {% if can_edit | default(false) %}
+    <select class="grid-select conn-field" data-field="fiber_mode" onchange="markDirty(this)">
+      <option value="" {% if not c.fiber_mode %}selected{% endif %}>—</option>
+      <option value="singlemode" {% if c.fiber_mode == 'singlemode' %}selected{% endif %}>SM</option>
+      <option value="multimode"  {% if c.fiber_mode == 'multimode'  %}selected{% endif %}>MM</option>
+    </select>
+    {% else %}{{ c.fiber_mode or '—' }}{% endif %}
+  </td>
+  <td class="col-extra"><input class="grid-input conn-field mono" data-field="lag_id"
+       value="{{ c.lag_id or '' }}" oninput="markDirty(this)" placeholder="Po1" style="max-width:52px"></td>
+  <td class="col-extra"><input class="grid-input conn-field" data-field="lag_member_index"
+       value="{{ c.lag_member_index or '' }}" oninput="markDirty(this)"
+       type="number" min="1" style="max-width:44px" placeholder="#"></td>
 
   {# Cable lengths (read-only) #}
   <td class="seg-length {% if c.seg1_length == 'cross-cabinet' %}seg-cross{% elif c.seg1_length in ['incomplete','exceeds_max'] %}seg-incomplete{% endif %}">{{ c.seg1_length or '—' }}</td>

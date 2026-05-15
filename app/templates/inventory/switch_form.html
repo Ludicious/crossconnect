@@ -22,6 +22,29 @@
                  value="{{ switch.name if switch else '' }}" required autofocus
                  placeholder="e.g. DC-SWITCH-1">
         </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Device Type
+            <span class="text-muted fw-normal">(optional)</span>
+          </label>
+          <div x-data="autocomplete('/inventory/autocomplete/device-types?category=switch', {{ switch.switch_type_id or 'null' }}, '{{ (switch.device_type.manufacturer + ' ' + switch.device_type.model) if switch and switch.device_type else '' }}')" class="position-relative">
+            <input type="text" class="form-control" x-model="query" @input.debounce.200="search()"
+                   @focus="search()" @blur="hide()" placeholder="Search switch model…">
+            <input type="hidden" name="switch_type_id" x-model="selectedId">
+            <div x-show="open && results.length" class="cc-dropdown">
+              <template x-for="r in results" :key="r.id">
+                <div class="cc-dropdown-item" @mousedown.prevent="pick(r)">
+                  <span x-text="r.label"></span>
+                  <span class="text-muted small ms-1" x-show="r.rack_u" x-text="r.rack_u + 'U'"></span>
+                </div>
+              </template>
+              <div class="cc-dropdown-item cc-dropdown-create" x-show="query.length > 1"
+                   @mousedown.prevent="createNew()">
+                <i class="bi bi-plus-lg me-1"></i>Create: "<span x-text="query"></span>"
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="col-md-6">
           <label class="form-label small fw-semibold">Role <span class="text-danger">*</span></label>
           <select class="form-select" name="switch_role">

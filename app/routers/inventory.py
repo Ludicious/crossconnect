@@ -238,6 +238,9 @@ async def device_create(
     rack_id: int, request: Request,
     name: str = Form(...), serial: str = Form(""),
     system_id: Optional[int] = Form(None), starting_ru: Optional[int] = Form(None),
+    device_type_id: Optional[int] = Form(None),
+    parent_device_id: Optional[int] = Form(None),
+    slot_number: Optional[int] = Form(None),
     notes: str = Form(""),
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
@@ -247,7 +250,10 @@ async def device_create(
         raise HTTPException(404)
     try:
         svc.create_device(db, rack_id=rack_id, name=name, system_id=system_id or None,
-                          serial=serial, starting_ru=starting_ru, notes=notes)
+                          serial=serial, starting_ru=starting_ru,
+                          device_type_id=device_type_id or None,
+                          parent_device_id=parent_device_id or None,
+                          slot_number=slot_number, notes=notes)
         return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
     except ValueError as e:
         systems = svc.list_systems(db)
@@ -271,6 +277,9 @@ async def device_update(
     device_id: int, request: Request,
     name: str = Form(...), serial: str = Form(""),
     system_id: Optional[int] = Form(None), starting_ru: Optional[int] = Form(None),
+    device_type_id: Optional[int] = Form(None),
+    parent_device_id: Optional[int] = Form(None),
+    slot_number: Optional[int] = Form(None),
     notes: str = Form(""),
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
@@ -279,7 +288,9 @@ async def device_update(
     if not device:
         raise HTTPException(404)
     svc.update_device(db, device, name=name, serial=serial, system_id=system_id or None,
-                      starting_ru=starting_ru, notes=notes)
+                      starting_ru=starting_ru, device_type_id=device_type_id or None,
+                      parent_device_id=parent_device_id or None,
+                      slot_number=slot_number, notes=notes)
     return RedirectResponse(f"/inventory/racks/{device.rack_id}", status_code=302)
 
 
@@ -311,6 +322,7 @@ async def switch_create(
     rack_id: int, request: Request,
     name: str = Form(...), serial: str = Form(""),
     switch_role: str = Form("LAN"), starting_ru: Optional[int] = Form(None),
+    switch_type_id: Optional[int] = Form(None),
     notes: str = Form(""),
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
@@ -319,7 +331,8 @@ async def switch_create(
     if not rack:
         raise HTTPException(404)
     svc.create_switch(db, rack_id=rack_id, name=name, switch_role=switch_role,
-                      serial=serial, starting_ru=starting_ru, notes=notes)
+                      serial=serial, starting_ru=starting_ru,
+                      switch_type_id=switch_type_id or None, notes=notes)
     return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
 
 
@@ -338,6 +351,7 @@ async def switch_update(
     switch_id: int, request: Request,
     name: str = Form(...), serial: str = Form(""),
     switch_role: str = Form("LAN"), starting_ru: Optional[int] = Form(None),
+    switch_type_id: Optional[int] = Form(None),
     notes: str = Form(""),
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
@@ -346,7 +360,7 @@ async def switch_update(
     if not sw:
         raise HTTPException(404)
     svc.update_switch(db, sw, name=name, serial=serial, switch_role=switch_role,
-                      starting_ru=starting_ru, notes=notes)
+                      starting_ru=starting_ru, switch_type_id=switch_type_id or None, notes=notes)
     return RedirectResponse(f"/inventory/racks/{sw.rack_id}", status_code=302)
 
 
@@ -503,3 +517,91 @@ async def ac_devices(q: str = Query(""), rack_id: Optional[int] = Query(None),
 async def ac_switches(q: str = Query(""), role: Optional[str] = Query(None),
                       db: Session = Depends(get_db), user=Depends(get_current_user)):
     return JSONResponse(svc.autocomplete_switches(db, q, role))
+
+
+# ── Device Types ──────────────────────────────────────────────────────────
+
+@router.get("/device-types", response_class=HTMLResponse)
+async def dt_list(request: Request, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    dts = svc.list_device_types(db)
+    return _tpl(request, "inventory/device_type_list.html",
+                {"request": request, "user": user, "device_types": dts})
+
+
+@router.get("/device-types/new", response_class=HTMLResponse)
+async def dt_new(request: Request, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    _arch_or_admin(request, db)
+    return _tpl(request, "inventory/device_type_form.html",
+                {"request": request, "user": user, "dt": None, "error": None})
+
+
+@router.post("/device-types/new")
+async def dt_create(
+    request: Request,
+    manufacturer: str = Form(...), model: str = Form(...),
+    category: str = Form("server"), rack_u: Optional[int] = Form(None),
+    slot_count: Optional[int] = Form(None), notes: str = Form(""),
+    db: Session = Depends(get_db), user=Depends(get_current_user),
+):
+    _arch_or_admin(request, db)
+    try:
+        dt = svc.create_device_type(db, manufacturer=manufacturer, model=model,
+                                     category=category, rack_u=rack_u,
+                                     slot_count=slot_count, notes=notes)
+        return RedirectResponse(f"/inventory/device-types", status_code=302)
+    except ValueError as e:
+        return _tpl(request, "inventory/device_type_form.html",
+                    {"request": request, "user": user, "dt": None, "error": str(e)}, 400)
+
+
+@router.get("/device-types/{dt_id}/edit", response_class=HTMLResponse)
+async def dt_edit(dt_id: int, request: Request, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    _arch_or_admin(request, db)
+    dt = svc.get_device_type(db, dt_id)
+    if not dt:
+        raise HTTPException(404)
+    return _tpl(request, "inventory/device_type_form.html",
+                {"request": request, "user": user, "dt": dt, "error": None})
+
+
+@router.post("/device-types/{dt_id}/edit")
+async def dt_update(
+    dt_id: int, request: Request,
+    manufacturer: str = Form(...), model: str = Form(...),
+    category: str = Form("server"), rack_u: Optional[int] = Form(None),
+    slot_count: Optional[int] = Form(None), notes: str = Form(""),
+    db: Session = Depends(get_db), user=Depends(get_current_user),
+):
+    _arch_or_admin(request, db)
+    dt = svc.get_device_type(db, dt_id)
+    if not dt:
+        raise HTTPException(404)
+    try:
+        svc.update_device_type(db, dt, manufacturer=manufacturer, model=model,
+                                category=category, rack_u=rack_u,
+                                slot_count=slot_count, notes=notes)
+        return RedirectResponse("/inventory/device-types", status_code=302)
+    except ValueError as e:
+        return _tpl(request, "inventory/device_type_form.html",
+                    {"request": request, "user": user, "dt": dt, "error": str(e)}, 400)
+
+
+@router.post("/device-types/{dt_id}/delete")
+async def dt_delete(dt_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _arch_or_admin(request, db)
+    dt = svc.get_device_type(db, dt_id)
+    if not dt:
+        raise HTTPException(404)
+    try:
+        svc.delete_device_type(db, dt)
+        return RedirectResponse("/inventory/device-types", status_code=302)
+    except ValueError as e:
+        dts = svc.list_device_types(db)
+        return _tpl(request, "inventory/device_type_list.html",
+                    {"request": request, "user": user, "device_types": dts, "error": str(e)}, 400)
+
+
+@router.get("/autocomplete/device-types")
+async def ac_device_types(q: str = Query(""), category: Optional[str] = Query(None),
+                           db: Session = Depends(get_db), user=Depends(get_current_user)):
+    return JSONResponse(svc.autocomplete_device_types(db, q, category))

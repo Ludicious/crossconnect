@@ -207,10 +207,14 @@ def get_device(db: Session, device_id: int) -> Optional[Device]:
 def create_device(db: Session, rack_id: int, name: str,
                   system_id: Optional[int] = None,
                   serial: str = "", starting_ru: Optional[int] = None,
+                  device_type_id: Optional[int] = None,
+                  parent_device_id: Optional[int] = None,
+                  slot_number: Optional[int] = None,
                   notes: str = "") -> Device:
     d = Device(rack_id=rack_id, name=name, system_id=system_id,
                serial=serial or None, starting_ru=starting_ru,
-               notes=notes or None)
+               device_type_id=device_type_id, parent_device_id=parent_device_id,
+               slot_number=slot_number, notes=notes or None)
     db.add(d)
     db.commit()
     db.refresh(d)
@@ -245,9 +249,11 @@ def get_switch(db: Session, switch_id: int) -> Optional[Switch]:
 
 def create_switch(db: Session, rack_id: int, name: str, switch_role: str = "LAN",
                   serial: str = "", starting_ru: Optional[int] = None,
+                  switch_type_id: Optional[int] = None,
                   notes: str = "") -> Switch:
     sw = Switch(rack_id=rack_id, name=name, switch_role=switch_role,
-                serial=serial or None, starting_ru=starting_ru, notes=notes or None)
+                serial=serial or None, starting_ru=starting_ru,
+                switch_type_id=switch_type_id, notes=notes or None)
     db.add(sw)
     db.commit()
     db.refresh(sw)
@@ -333,3 +339,73 @@ def autocomplete_switches(db: Session, q: str, role: Optional[str] = None, limit
     rows = query.order_by(Switch.name).limit(limit).all()
     return [{"id": r.id, "label": f"{r.name} ({r.switch_role})", "name": r.name,
              "role": r.switch_role, "serial": r.serial or "", "rack": r.rack.name} for r in rows]
+
+
+# ── Device Types ──────────────────────────────────────────────────────────
+
+from app.models.inventory import DeviceType
+
+def list_device_types(db: Session, category: Optional[str] = None) -> list[DeviceType]:
+    q = db.query(DeviceType)
+    if category:
+        q = q.filter(DeviceType.category == category)
+    return q.order_by(DeviceType.manufacturer, DeviceType.model).all()
+
+
+def get_device_type(db: Session, dt_id: int) -> Optional[DeviceType]:
+    return db.get(DeviceType, dt_id)
+
+
+def create_device_type(db: Session, manufacturer: str, model: str,
+                        category: str = "server", rack_u: Optional[int] = None,
+                        slot_count: Optional[int] = None, notes: str = "") -> DeviceType:
+    if db.query(DeviceType).filter(
+        func.lower(DeviceType.manufacturer) == manufacturer.lower(),
+        func.lower(DeviceType.model) == model.lower()
+    ).first():
+        raise ValueError(f"Device type '{manufacturer} {model}' already exists.")
+    dt = DeviceType(manufacturer=manufacturer, model=model, category=category,
+                    rack_u=rack_u, slot_count=slot_count, notes=notes or None)
+    db.add(dt)
+    db.commit()
+    db.refresh(dt)
+    return dt
+
+
+def update_device_type(db: Session, dt: DeviceType, **kwargs) -> DeviceType:
+    if "manufacturer" in kwargs or "model" in kwargs:
+        mfg = kwargs.get("manufacturer", dt.manufacturer)
+        mdl = kwargs.get("model", dt.model)
+        if db.query(DeviceType).filter(
+            func.lower(DeviceType.manufacturer) == mfg.lower(),
+            func.lower(DeviceType.model) == mdl.lower(),
+            DeviceType.id != dt.id
+        ).first():
+            raise ValueError(f"Device type '{mfg} {mdl}' already exists.")
+    for k, v in kwargs.items():
+        setattr(dt, k, v or None if k == "notes" else v)
+    db.commit()
+    db.refresh(dt)
+    return dt
+
+
+def delete_device_type(db: Session, dt: DeviceType) -> None:
+    if dt.devices or dt.switches:
+        raise ValueError("Cannot delete device type that is assigned to devices or switches.")
+    db.delete(dt)
+    db.commit()
+
+
+def autocomplete_device_types(db: Session, q: str, category: Optional[str] = None,
+                               limit: int = 10) -> list[dict]:
+    query = db.query(DeviceType).filter(
+        or_(DeviceType.manufacturer.ilike(f"%{q}%"),
+            DeviceType.model.ilike(f"%{q}%"))
+    )
+    if category:
+        query = query.filter(DeviceType.category == category)
+    rows = query.order_by(DeviceType.manufacturer, DeviceType.model).limit(limit).all()
+    return [{"id": r.id, "label": f"{r.manufacturer} {r.model}",
+             "manufacturer": r.manufacturer, "model": r.model,
+             "category": r.category, "rack_u": r.rack_u,
+             "slot_count": r.slot_count} for r in rows]

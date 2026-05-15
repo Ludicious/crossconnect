@@ -22,6 +22,9 @@ CABLE_TYPES = {"RJ45", "LC_Fiber", "DAC", "other"}
 # purpose values
 PURPOSES = {"management", "data", "storage", "other"}
 
+# fiber_mode values (only relevant when cable_type involves fiber)
+FIBER_MODES = {"singlemode", "multimode"}
+
 
 class Connection(Base):
     """
@@ -124,6 +127,16 @@ class Connection(Base):
     # ── VLAN/VSAN + misc ──────────────────────────────────────────────────
     vlan_vsan: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # ── LAG / Port-channel ────────────────────────────────────────────────
+    # lag_id groups rows that are members of the same port channel
+    # (free-text: "Po1", "ae0", "bond0", etc.)
+    lag_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    lag_member_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # ── Fiber mode ────────────────────────────────────────────────────────
+    # singlemode / multimode — only meaningful when cable_type involves fiber
+    fiber_mode: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
 
     # ── Install status (DC tech updates) ─────────────────────────────────
     install_status: Mapped[str] = mapped_column(

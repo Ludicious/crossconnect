@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{% if dt %}Edit {{ dt.manufacturer }} {{ dt.model }}{% else %}New Device Type{% endif %} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+  / <a href="/inventory/device-types" class="text-muted text-decoration-none">Device Types</a>
+</div>
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">
+    {% if dt %}Edit: {{ dt.manufacturer }} {{ dt.model }}{% else %}New Device Type{% endif %}
+  </div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Manufacturer <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" name="manufacturer"
+                 value="{{ dt.manufacturer if dt else '' }}" required autofocus
+                 placeholder="e.g. Cisco, NetApp, Dell">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Model <span class="text-danger">*</span></label>
+          <input type="text" class="form-control mono" name="model"
+                 value="{{ dt.model if dt else '' }}" required
+                 placeholder="e.g. C9300-48P, AFF A400">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Category <span class="text-danger">*</span></label>
+          <select class="form-select" name="category">
+            {% for cat in ['server','storage','switch'] %}
+            <option value="{{ cat }}"
+              {% if dt and dt.category == cat %}selected
+              {% elif not dt and cat == 'server' %}selected{% endif %}>
+              {{ cat|capitalize }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Rack Height (U)
+            <span class="text-muted fw-normal">(optional)</span>
+          </label>
+          <input type="number" class="form-control" name="rack_u" min="1" max="54"
+                 value="{{ dt.rack_u if dt and dt.rack_u else '' }}"
+                 placeholder="e.g. 2">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Chassis Slots
+            <span class="text-muted fw-normal">(if chassis)</span>
+          </label>
+          <input type="number" class="form-control" name="slot_count" min="1"
+                 value="{{ dt.slot_count if dt and dt.slot_count else '' }}"
+                 placeholder="e.g. 8 for UCS">
+          <div class="form-text">Leave blank for non-chassis devices.</div>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" name="notes" rows="2"
+                    placeholder="e.g. port layout, supported transceivers, quirks">{{ dt.notes if dt and dt.notes else '' }}</textarea>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn cc-btn-primary">
+          {% if dt %}Save Changes{% else %}Create Device Type{% endif %}
+        </button>
+        <a href="/inventory/device-types" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Device Types — CrossConnect{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="fw-bold mb-0"><i class="bi bi-cpu me-2 text-primary"></i>Device Types</h4>
+    <p class="text-muted small mb-0">Manufacturer/model library — shared across all datacenters</p>
+  </div>
+  {% if user.role in ['architect','admin'] %}
+  <a href="/inventory/device-types/new" class="btn cc-btn-primary btn-sm">
+    <i class="bi bi-plus-lg me-1"></i>New Device Type
+  </a>
+  {% endif %}
+</div>
+
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
+{% if device_types %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 small">
+      <thead>
+        <tr>
+          <th>Manufacturer</th>
+          <th>Model</th>
+          <th>Category</th>
+          <th>Height</th>
+          <th>Slots</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for dt in device_types %}
+      <tr>
+        <td class="fw-semibold">{{ dt.manufacturer }}</td>
+        <td class="mono">{{ dt.model }}</td>
+        <td>
+          <span class="badge
+            {% if dt.category == 'storage' %}bg-info text-dark
+            {% elif dt.category == 'switch' %}bg-warning text-dark
+            {% else %}bg-secondary{% endif %}">
+            {{ dt.category }}
+          </span>
+        </td>
+        <td>{% if dt.rack_u %}{{ dt.rack_u }}U{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{% if dt.slot_count %}<span class="badge bg-secondary">{{ dt.slot_count }} slots</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td class="text-muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ dt.notes or '' }}</td>
+        <td class="text-end">
+          {% if user.role in ['architect','admin'] %}
+          <a href="/inventory/device-types/{{ dt.id }}/edit" class="btn btn-outline-secondary btn-sm py-0 px-2">Edit</a>
+          <form method="post" action="/inventory/device-types/{{ dt.id }}/delete" class="d-inline"
+                onsubmit="return confirm('Delete {{ dt.manufacturer }} {{ dt.model }}?')">
+            <button class="btn btn-outline-danger btn-sm py-0 px-2"><i class="bi bi-trash"></i></button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info border-0 small">
+  <i class="bi bi-info-circle me-2"></i>No device types yet.
+  {% if user.role in ['architect','admin'] %}<a href="/inventory/device-types/new">Add one.</a>{% endif %}
+</div>
+{% endif %}
+
+<div class="mt-3">
+  <a href="/inventory" class="text-muted small text-decoration-none">
+    <i class="bi bi-chevron-left me-1"></i>Back to Inventory
+  </a>
+</div>
+{% endblock %}

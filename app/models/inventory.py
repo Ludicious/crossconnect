@@ -58,6 +58,35 @@ class Rack(Base):
     )
 
 
+class DeviceType(Base):
+    """
+    Manufacturer/model template. Devices reference this for consistent
+    RU height, slot count, and category.  All three categories (server,
+    storage, switch) share one table; switch device types can also be
+    assigned to Switch records via switch_type_id.
+    """
+    __tablename__ = "device_types"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    manufacturer: Mapped[str] = mapped_column(String(128), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    # server / storage / switch
+    category: Mapped[str] = mapped_column(String(16), nullable=False, default="server")
+    rack_u: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Non-null means this chassis can host child devices; value = number of slots
+    slot_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    devices: Mapped[list["Device"]] = relationship("Device", back_populates="device_type",
+                                                    foreign_keys="Device.device_type_id")
+    switches: Mapped[list["Switch"]] = relationship("Switch", back_populates="device_type")
+
+    __table_args__ = (
+        UniqueConstraint("manufacturer", "model", name="uq_device_type_mfg_model"),
+    )
+
+
 class System(Base):
     """
     Optional logical parent grouping devices (e.g. a storage cluster or blade chassis).
@@ -84,11 +113,27 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     serial: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     starting_ru: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Device type template (optional — can be a stub without one)
+    device_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("device_types.id"), nullable=True
+    )
+    # Parent chassis (e.g. UCS blade references its UCS chassis)
+    parent_device_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("devices.id"), nullable=True
+    )
+    slot_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     system: Mapped[Optional["System"]] = relationship("System", back_populates="devices")
     rack: Mapped["Rack"] = relationship("Rack", back_populates="devices")
+    device_type: Mapped[Optional["DeviceType"]] = relationship(
+        "DeviceType", back_populates="devices", foreign_keys=[device_type_id]
+    )
+    parent_device: Mapped[Optional["Device"]] = relationship(
+        "Device", remote_side="Device.id", foreign_keys="Device.parent_device_id",
+        backref="child_devices"
+    )
 
 
 class Switch(Base):
@@ -101,10 +146,16 @@ class Switch(Base):
     serial: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     switch_role: Mapped[str] = mapped_column(String(8), nullable=False, default="LAN")
     starting_ru: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    switch_type_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("device_types.id"), nullable=True
+    )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     rack: Mapped["Rack"] = relationship("Rack", back_populates="switches")
+    device_type: Mapped[Optional["DeviceType"]] = relationship(
+        "DeviceType", back_populates="switches"
+    )
 
 
 class PatchPanel(Base):
