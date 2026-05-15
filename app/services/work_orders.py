@@ -173,15 +173,28 @@ def _validate_all_connections(db: Session, wo_id: int) -> list[dict]:
 
 def _check_switch_port_duplicate(db: Session, conn: Connection,
                                   exclude_id: Optional[int] = None) -> Optional[str]:
-    """Hard block: same switch+slot+port in any non-deleted non-R row."""
-    if not all([conn.switch_id, conn.switch_slot, conn.switch_port]):
-        return None
+    """
+    Hard block: same switch+slot+port in any non-deleted non-R row.
+    Checks via switch_id FK (when set) OR via switch_name_raw (free-text path).
+    At least one identifier + slot + port must be present to trigger.
+    """
     if conn.action == "R":
         return None
+    if not (conn.switch_slot and conn.switch_port):
+        return None
+
+    # Build filter — prefer FK, fall back to raw name
+    if conn.switch_id:
+        switch_filter = Connection.switch_id == conn.switch_id
+    elif conn.switch_name_raw:
+        switch_filter = func.lower(Connection.switch_name_raw) == conn.switch_name_raw.lower()
+    else:
+        return None
+
     q = db.query(Connection).filter(
-        Connection.switch_id == conn.switch_id,
-        Connection.switch_slot == conn.switch_slot,
-        Connection.switch_port == conn.switch_port,
+        switch_filter,
+        func.lower(Connection.switch_slot) == conn.switch_slot.lower(),
+        func.lower(Connection.switch_port) == conn.switch_port.lower(),
         Connection.action != "R",
         Connection.deleted_at.is_(None),
     )

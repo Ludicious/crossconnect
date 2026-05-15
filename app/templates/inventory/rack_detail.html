@@ -45,7 +45,7 @@
         <table class="table table-hover mb-0 small">
           <thead><tr><th>Name</th><th>System</th><th>U</th><th>Serial</th><th></th></tr></thead>
           <tbody>
-          {% for d in rack.devices | sort(attribute='starting_ru') %}
+          {% for d in (rack.devices | selectattr('starting_ru') | sort(attribute='starting_ru') | list) + (rack.devices | rejectattr('starting_ru') | list) %}
           <tr>
             <td class="mono">{{ d.name }}</td>
             <td class="text-muted">
@@ -93,7 +93,7 @@
         <table class="table table-hover mb-0 small">
           <thead><tr><th>Name</th><th>Role</th><th>U</th><th>Serial</th><th></th></tr></thead>
           <tbody>
-          {% for sw in rack.switches | sort(attribute='starting_ru') %}
+          {% for sw in (rack.switches | selectattr('starting_ru') | sort(attribute='starting_ru') | list) + (rack.switches | rejectattr('starting_ru') | list) %}
           <tr>
             <td class="mono">{{ sw.name }}</td>
             <td><span class="badge {% if sw.switch_role=='SAN' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">{{ sw.switch_role }}</span></td>

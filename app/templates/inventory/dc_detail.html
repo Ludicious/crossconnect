@@ -71,7 +71,7 @@
   <div class="col-lg-4">
     <div class="card border-0 shadow-sm">
       <div class="card-header py-2 fw-semibold small text-uppercase" style="letter-spacing:.05em">Contacts</div>
-      <div class="card-body p-0" x-data="contactsEditor({{ dc.contacts | tojson | safe }})">
+      <div class="card-body p-0" x-data="contactsEditor([{% for c in dc.contacts %}{&quot;name&quot;:{{ c.name | tojson }},&quot;role&quot;:{{ (c.role or '') | tojson }},&quot;email&quot;:{{ (c.email or '') | tojson }},&quot;phone&quot;:{{ (c.phone or '') | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}])">
         <!-- View mode -->
         <div x-show="!editing">
           {% if dc.contacts %}
