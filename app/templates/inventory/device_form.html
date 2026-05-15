@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{% if device %}Edit {{ device.name }}{% else %}New Device{% endif %} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+  / <a href="/inventory/datacenters/{{ rack.datacenter.id }}" class="text-muted text-decoration-none">{{ rack.datacenter.name }}</a>
+  / <a href="/inventory/racks/{{ rack.id }}" class="text-muted text-decoration-none">{{ rack.name }}</a>
+</div>
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">
+    {% if device %}Edit Device: {{ device.name }}{% else %}New Device in {{ rack.name }}{% endif %}
+  </div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Device Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control mono" name="name"
+                 value="{{ device.name if device else '' }}" required autofocus
+                 placeholder="e.g. dc1-storage-44-01">
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Parent System
+            <span class="text-muted fw-normal">(optional — leave blank for standalone 1-2U)</span>
+          </label>
+          <div x-data="autocomplete('/inventory/autocomplete/systems', {{ device.system_id or 'null' }}, '{{ device.system.name if device and device.system else '' }}')" class="position-relative">
+            <input type="text" class="form-control" x-model="query" @input.debounce.200="search()"
+                   @focus="search()" @blur="hide()" placeholder="Search or create system…">
+            <input type="hidden" name="system_id" x-model="selectedId">
+            <div x-show="open && results.length" class="cc-dropdown">
+              <template x-for="r in results" :key="r.id">
+                <div class="cc-dropdown-item" @mousedown.prevent="pick(r)">
+                  <span x-text="r.label"></span>
+                  <span class="badge bg-secondary ms-1 small" x-text="r.type"></span>
+                </div>
+              </template>
+              <div class="cc-dropdown-item cc-dropdown-create" x-show="query.length > 1"
+                   @mousedown.prevent="createNew()">
+                <i class="bi bi-plus-lg me-1"></i>Create: "<span x-text="query"></span>"
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Starting U</label>
+          <input type="number" class="form-control" name="starting_ru" min="1" max="54"
+                 value="{{ device.starting_ru if device and device.starting_ru else '' }}">
+        </div>
+        <div class="col-md-8">
+          <label class="form-label small fw-semibold">Serial Number</label>
+          <input type="text" class="form-control mono" name="serial"
+                 value="{{ device.serial if device and device.serial else '' }}"
+                 placeholder="Optional">
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" name="notes" rows="2">{{ device.notes if device and device.notes else '' }}</textarea>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn cc-btn-primary">
+          {% if device %}Save Changes{% else %}Add Device{% endif %}
+        </button>
+        <a href="/inventory/racks/{{ rack.id }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,231 @@
+/* ── CrossConnect theme ─────────────────────────────────────────────────── */
+:root {
+  --cc-navy:        #1A2332;
+  --cc-navy-light:  #243044;
+  --cc-navy-border: #2e3d55;
+  --cc-accent:      #3d8ef0;
+  --cc-accent-hover:#2a7de0;
+
+  /* Column block tints for connection grid (used in Phase 2+) */
+  --cc-col-device:        #1e3a2f;  /* muted green */
+  --cc-col-device-patch:  #3a2a1a;  /* muted amber */
+  --cc-col-sw-patch:      #1a2b3a;  /* muted blue */
+  --cc-col-switch:        #2a1a3a;  /* muted purple */
+
+  /* Fabric tints */
+  --cc-fabric-a:  rgba(59, 130, 246, 0.08);
+  --cc-fabric-b:  rgba(245, 158, 11, 0.08);
+
+  /* Action badge colors */
+  --cc-action-a: #198754;
+  --cc-action-r: #dc3545;
+  --cc-action-c: #fd7e14;
+
+  /* Install status */
+  --cc-status-pending:        #6c757d;
+  --cc-status-done:           #198754;
+  --cc-status-blocked:        #dc3545;
+  --cc-status-change-required:#fd7e14;
+}
+
+/* ── Global ─────────────────────────────────────────────────────────────── */
+body {
+  background-color: #0f1623;
+  color: #e2e8f0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* Monospace for serials and port numbers */
+.mono { font-family: 'Consolas', 'Menlo', 'Courier New', monospace; font-size: .875em; }
+
+/* ── Navbar ─────────────────────────────────────────────────────────────── */
+.cc-navbar {
+  background-color: var(--cc-navy);
+  border-bottom: 1px solid var(--cc-navy-border);
+}
+
+.cc-navbar .navbar-brand {
+  color: #fff;
+  font-size: 1.1rem;
+  letter-spacing: .01em;
+}
+
+.cc-navbar .nav-link {
+  color: rgba(255,255,255,.75);
+  font-size: .875rem;
+  padding: .4rem .75rem;
+  border-radius: 4px;
+  transition: background .15s, color .15s;
+}
+
+.cc-navbar .nav-link:hover,
+.cc-navbar .nav-link.active {
+  color: #fff;
+  background-color: rgba(255,255,255,.1);
+}
+
+/* ── Role badge ─────────────────────────────────────────────────────────── */
+.cc-role-badge {
+  background-color: var(--cc-navy-light);
+  color: #93c5fd;
+  font-size: .65rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  border: 1px solid var(--cc-navy-border);
+}
+
+/* ── Login page ─────────────────────────────────────────────────────────── */
+.cc-login-bg {
+  background: linear-gradient(135deg, #0f1623 0%, #1a2d47 100%);
+}
+
+.cc-login-card {
+  background-color: #fff;
+  border: none;
+  border-radius: 12px;
+}
+
+.cc-login-card .form-control {
+  border-color: #dee2e6;
+  color: #212529;
+}
+
+.cc-login-card .form-label {
+  color: #495057;
+}
+
+/* ── Primary button ─────────────────────────────────────────────────────── */
+.cc-btn-primary {
+  background-color: var(--cc-accent);
+  border-color: var(--cc-accent);
+  color: #fff;
+}
+
+.cc-btn-primary:hover {
+  background-color: var(--cc-accent-hover);
+  border-color: var(--cc-accent-hover);
+  color: #fff;
+}
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.card {
+  background-color: var(--cc-navy-light);
+  border-color: var(--cc-navy-border);
+}
+
+.cc-stat-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Status badges ──────────────────────────────────────────────────────── */
+.badge-action-a { background-color: var(--cc-action-a); color: #fff; }
+.badge-action-r { background-color: var(--cc-action-r); color: #fff; }
+.badge-action-c { background-color: var(--cc-action-c); color: #fff; }
+
+.badge-status-draft           { background-color: #6c757d; color: #fff; }
+.badge-status-issued          { background-color: #0d6efd; color: #fff; }
+.badge-status-in_progress     { background-color: #fd7e14; color: #fff; }
+.badge-status-complete        { background-color: #198754; color: #fff; }
+.badge-status-cancelled       { background-color: #495057; color: #adb5bd; }
+
+.badge-install-pending        { background-color: var(--cc-status-pending);         color: #fff; }
+.badge-install-done           { background-color: var(--cc-status-done);            color: #fff; }
+.badge-install-blocked        { background-color: var(--cc-status-blocked);         color: #fff; }
+.badge-install-change_required{ background-color: var(--cc-status-change-required); color: #fff; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.table {
+  --bs-table-bg: transparent;
+  --bs-table-striped-bg: rgba(255,255,255,.03);
+  --bs-table-hover-bg: rgba(255,255,255,.06);
+  color: #e2e8f0;
+}
+
+.table th {
+  background-color: var(--cc-navy);
+  color: #f8fafc;
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  border-color: var(--cc-navy-border);
+}
+
+.table td {
+  border-color: var(--cc-navy-border);
+  vertical-align: middle;
+}
+
+/* Sticky header for connection grid */
+.table-sticky-head thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* ── Connection grid column tints (applied in Phase 3) ──────────────────── */
+.col-device       { background-color: var(--cc-col-device)      !important; }
+.col-device-patch { background-color: var(--cc-col-device-patch) !important; }
+.col-sw-patch     { background-color: var(--cc-col-sw-patch)     !important; }
+.col-switch       { background-color: var(--cc-col-switch)       !important; }
+
+/* Fabric row tinting */
+tr.fabric-a td { background-color: var(--cc-fabric-a); }
+tr.fabric-b td { background-color: var(--cc-fabric-b); }
+
+/* ── Form inputs ─────────────────────────────────────────────────────────── */
+.form-control,
+.form-select {
+  background-color: var(--cc-navy);
+  border-color: var(--cc-navy-border);
+  color: #e2e8f0;
+}
+
+.form-control:focus,
+.form-select:focus {
+  background-color: var(--cc-navy-light);
+  border-color: var(--cc-accent);
+  color: #e2e8f0;
+  box-shadow: 0 0 0 .2rem rgba(61,142,240,.25);
+}
+
+.form-control.is-invalid { border-color: var(--cc-action-r); }
+
+/* ── Utility ─────────────────────────────────────────────────────────────── */
+.text-muted { color: #94a3b8 !important; }
+hr { border-color: var(--cc-navy-border); }
+
+/* ── Autocomplete dropdown ──────────────────────────────────────────────── */
+.cc-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background-color: var(--cc-navy-light);
+  border: 1px solid var(--cc-accent);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.cc-dropdown-item {
+  padding: .45rem .75rem;
+  cursor: pointer;
+  font-size: .875rem;
+  color: #e2e8f0;
+  border-bottom: 1px solid var(--cc-navy-border);
+}
+
+.cc-dropdown-item:last-child { border-bottom: none; }
+.cc-dropdown-item:hover { background-color: rgba(61,142,240,.15); }
+
+.cc-dropdown-create {
+  color: var(--cc-accent);
+  font-style: italic;
+}

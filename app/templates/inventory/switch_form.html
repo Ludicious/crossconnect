@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{% if switch %}Edit {{ switch.name }}{% else %}New Switch{% endif %} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+  / <a href="/inventory/datacenters/{{ rack.datacenter.id }}" class="text-muted text-decoration-none">{{ rack.datacenter.name }}</a>
+  / <a href="/inventory/racks/{{ rack.id }}" class="text-muted text-decoration-none">{{ rack.name }}</a>
+</div>
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">
+    {% if switch %}Edit Switch: {{ switch.name }}{% else %}New Switch in {{ rack.name }}{% endif %}
+  </div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Switch Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control mono" name="name"
+                 value="{{ switch.name if switch else '' }}" required autofocus
+                 placeholder="e.g. DC-SWITCH-1">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Role <span class="text-danger">*</span></label>
+          <select class="form-select" name="switch_role">
+            <option value="LAN" {% if not switch or switch.switch_role=='LAN' %}selected{% endif %}>LAN</option>
+            <option value="SAN" {% if switch and switch.switch_role=='SAN' %}selected{% endif %}>SAN</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Starting U</label>
+          <input type="number" class="form-control" name="starting_ru" min="1" max="54"
+                 value="{{ switch.starting_ru if switch and switch.starting_ru else '' }}">
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Serial Number</label>
+          <input type="text" class="form-control mono" name="serial"
+                 value="{{ switch.serial if switch and switch.serial else '' }}" placeholder="Optional">
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" name="notes" rows="2">{{ switch.notes if switch and switch.notes else '' }}</textarea>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn cc-btn-primary">
+          {% if switch %}Save Changes{% else %}Add Switch{% endif %}
+        </button>
+        <a href="/inventory/racks/{{ rack.id }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Rack {{ rack.name }} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+  / <a href="/inventory/datacenters/{{ rack.datacenter.id }}" class="text-muted text-decoration-none">{{ rack.datacenter.name }}</a>
+  / {{ rack.name }}
+</div>
+
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h4 class="fw-bold mb-0 mono">{{ rack.name }}
+      <span class="text-muted small fw-normal ms-2">{{ rack.datacenter.name }} ({{ rack.datacenter.code }})</span>
+    </h4>
+    <p class="text-muted small mb-0">
+      {{ rack.total_ru }}U cabinet
+      {% if rack.grid_position %}· Grid: <span class="mono">{{ rack.grid_position }}</span>{% endif %}
+    </p>
+  </div>
+  {% if user.role in ['architect','admin'] %}
+  <div class="d-flex gap-2">
+    <a href="/inventory/racks/{{ rack.id }}/edit" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-pencil me-1"></i>Edit Rack
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-3">
+  <!-- Devices -->
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em">Devices</span>
+        {% if user.role in ['architect','admin'] %}
+        <a href="/inventory/racks/{{ rack.id }}/devices/new" class="btn cc-btn-primary btn-sm py-0 px-2">
+          <i class="bi bi-plus-lg"></i>
+        </a>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if rack.devices %}
+        <table class="table table-hover mb-0 small">
+          <thead><tr><th>Name</th><th>System</th><th>U</th><th>Serial</th><th></th></tr></thead>
+          <tbody>
+          {% for d in rack.devices | sort(attribute='starting_ru') %}
+          <tr>
+            <td class="mono">{{ d.name }}</td>
+            <td class="text-muted">
+              {% if d.system %}<a href="/inventory/systems/{{ d.system.id }}" class="text-decoration-none text-muted">{{ d.system.name }}</a>
+              {% else %}<span class="text-muted fst-italic">standalone</span>{% endif %}
+            </td>
+            <td class="mono">{{ d.starting_ru or '—' }}</td>
+            <td class="mono text-muted" style="max-width:100px;overflow:hidden;text-overflow:ellipsis">{{ d.serial or '—' }}</td>
+            <td class="text-end">
+              {% if user.role in ['architect','admin'] %}
+              <a href="/inventory/devices/{{ d.id }}/edit" class="btn btn-outline-secondary btn-sm py-0 px-2">Edit</a>
+              <form method="post" action="/inventory/devices/{{ d.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Delete {{ d.name }}?')">
+                <button class="btn btn-outline-danger btn-sm py-0 px-2"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small p-3 mb-0">No devices.
+          {% if user.role in ['architect','admin'] %}
+          <a href="/inventory/racks/{{ rack.id }}/devices/new">Add one.</a>{% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Switches -->
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em">Switches</span>
+        {% if user.role in ['architect','admin'] %}
+        <a href="/inventory/racks/{{ rack.id }}/switches/new" class="btn cc-btn-primary btn-sm py-0 px-2">
+          <i class="bi bi-plus-lg"></i>
+        </a>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if rack.switches %}
+        <table class="table table-hover mb-0 small">
+          <thead><tr><th>Name</th><th>Role</th><th>U</th><th>Serial</th><th></th></tr></thead>
+          <tbody>
+          {% for sw in rack.switches | sort(attribute='starting_ru') %}
+          <tr>
+            <td class="mono">{{ sw.name }}</td>
+            <td><span class="badge {% if sw.switch_role=='SAN' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">{{ sw.switch_role }}</span></td>
+            <td class="mono">{{ sw.starting_ru or '—' }}</td>
+            <td class="mono text-muted">{{ sw.serial or '—' }}</td>
+            <td class="text-end">
+              {% if user.role in ['architect','admin'] %}
+              <a href="/inventory/switches/{{ sw.id }}/edit" class="btn btn-outline-secondary btn-sm py-0 px-2">Edit</a>
+              <form method="post" action="/inventory/switches/{{ sw.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Delete {{ sw.name }}?')">
+                <button class="btn btn-outline-danger btn-sm py-0 px-2"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small p-3 mb-0">No switches.
+          {% if user.role in ['architect','admin'] %}
+          <a href="/inventory/racks/{{ rack.id }}/switches/new">Add one.</a>{% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Patch Panels -->
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em">Patch Panels</span>
+        {% if user.role in ['architect','admin'] %}
+        <button class="btn cc-btn-primary btn-sm py-0 px-2" data-bs-toggle="collapse" data-bs-target="#pp-add-form">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+        {% endif %}
+      </div>
+      {% if user.role in ['architect','admin'] %}
+      <div class="collapse" id="pp-add-form">
+        <div class="card-body border-bottom" style="border-color:var(--cc-navy-border)!important">
+          <form method="post" action="/inventory/racks/{{ rack.id }}/patch-panels/new" class="row g-2 align-items-end">
+            <div class="col"><input type="text" class="form-control form-control-sm mono" name="name" placeholder="Name *" required></div>
+            <div class="col-3"><input type="number" class="form-control form-control-sm" name="starting_ru" placeholder="U" min="1" max="54"></div>
+            <div class="col-auto"><button type="submit" class="btn cc-btn-primary btn-sm">Add</button></div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+      <div class="card-body p-0">
+        {% if rack.patch_panels %}
+        <table class="table table-hover mb-0 small">
+          <thead><tr><th>Name</th><th>U</th><th></th></tr></thead>
+          <tbody>
+          {% for pp in rack.patch_panels %}
+          <tr>
+            <td class="mono">{{ pp.name }}</td>
+            <td class="mono">{{ pp.starting_ru or '—' }}</td>
+            <td class="text-end">
+              {% if user.role in ['architect','admin'] %}
+              <form method="post" action="/inventory/patch-panels/{{ pp.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Delete {{ pp.name }}?')">
+                <button class="btn btn-outline-danger btn-sm py-0 px-2"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small p-3 mb-0">No patch panels.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if user.role in ['architect','admin'] %}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-body py-2">
+        <form method="post" action="/inventory/racks/{{ rack.id }}/delete"
+              onsubmit="return confirm('Delete rack {{ rack.name }}? All contents must be removed first.')">
+          <button class="btn btn-outline-danger btn-sm w-100">
+            <i class="bi bi-trash me-1"></i>Delete Rack
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,121 @@
+from datetime import datetime
+from typing import Optional
+from sqlalchemy import (
+    String, Integer, Boolean, Text, DateTime, ForeignKey, func, UniqueConstraint
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.base import Base
+
+
+class Datacenter(Base):
+    __tablename__ = "datacenters"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    has_grid_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    racks: Mapped[list["Rack"]] = relationship("Rack", back_populates="datacenter", cascade="all, delete-orphan")
+    contacts: Mapped[list["DCContact"]] = relationship("DCContact", back_populates="datacenter", cascade="all, delete-orphan")
+    work_orders: Mapped[list] = relationship("WorkOrder", back_populates="datacenter")
+
+
+class DCContact(Base):
+    __tablename__ = "dc_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    datacenter_id: Mapped[int] = mapped_column(ForeignKey("datacenters.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    role: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    datacenter: Mapped["Datacenter"] = relationship("Datacenter", back_populates="contacts")
+
+
+class Rack(Base):
+    __tablename__ = "racks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    datacenter_id: Mapped[int] = mapped_column(ForeignKey("datacenters.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    grid_position: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    total_ru: Mapped[int] = mapped_column(Integer, default=42)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    datacenter: Mapped["Datacenter"] = relationship("Datacenter", back_populates="racks")
+    devices: Mapped[list["Device"]] = relationship("Device", back_populates="rack")
+    switches: Mapped[list["Switch"]] = relationship("Switch", back_populates="rack")
+    patch_panels: Mapped[list["PatchPanel"]] = relationship("PatchPanel", back_populates="rack")
+
+    __table_args__ = (
+        UniqueConstraint("datacenter_id", "name", name="uq_rack_name_per_dc"),
+    )
+
+
+class System(Base):
+    """
+    Optional logical parent grouping devices (e.g. a storage cluster or blade chassis).
+    Devices may have system_id=NULL for standalone 1-2U servers.
+    """
+    __tablename__ = "systems"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    system_type: Mapped[str] = mapped_column(String(32), default="server")
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    devices: Mapped[list["Device"]] = relationship("Device", back_populates="system")
+
+
+class Device(Base):
+    """Physical storage or server node — never a switch. system_id is optional."""
+    __tablename__ = "devices"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    system_id: Mapped[Optional[int]] = mapped_column(ForeignKey("systems.id"), nullable=True)
+    rack_id: Mapped[int] = mapped_column(ForeignKey("racks.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    serial: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    starting_ru: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    system: Mapped[Optional["System"]] = relationship("System", back_populates="devices")
+    rack: Mapped["Rack"] = relationship("Rack", back_populates="devices")
+
+
+class Switch(Base):
+    """SAN or LAN switch — never a server or storage device."""
+    __tablename__ = "switches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rack_id: Mapped[int] = mapped_column(ForeignKey("racks.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    serial: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    switch_role: Mapped[str] = mapped_column(String(8), nullable=False, default="LAN")
+    starting_ru: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    rack: Mapped["Rack"] = relationship("Rack", back_populates="switches")
+
+
+class PatchPanel(Base):
+    """Patch panel — module/port details stay free-form on Connection rows (v1)."""
+    __tablename__ = "patch_panels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rack_id: Mapped[int] = mapped_column(ForeignKey("racks.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    starting_ru: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    rack: Mapped["Rack"] = relationship("Rack", back_populates="patch_panels")

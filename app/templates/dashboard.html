@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — CrossConnect{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-12">
+    <h4 class="fw-bold mb-1">
+      <i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard
+    </h4>
+    <p class="text-muted mb-0">Welcome back, {{ user.display_name }}.</p>
+  </div>
+
+  <!-- Quick-action cards — will be wired in later phases -->
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <div class="cc-stat-icon bg-primary bg-opacity-10 text-primary rounded p-2">
+            <i class="bi bi-clipboard-check fs-4"></i>
+          </div>
+          <div>
+            <div class="fw-semibold">Work Orders</div>
+            <div class="text-muted small">Create and track cabling jobs</div>
+          </div>
+        </div>
+        <a href="/work-orders" class="btn cc-btn-primary btn-sm w-100">
+          View Work Orders
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {% if user.role in ['architect', 'admin'] %}
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <div class="cc-stat-icon bg-success bg-opacity-10 text-success rounded p-2">
+            <i class="bi bi-server fs-4"></i>
+          </div>
+          <div>
+            <div class="fw-semibold">Inventory</div>
+            <div class="text-muted small">Devices, switches, racks, DCs</div>
+          </div>
+        </div>
+        <a href="/inventory" class="btn btn-outline-secondary btn-sm w-100">
+          Manage Inventory
+        </a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="col-md-4">
+    <div class="card h-100 border-0 shadow-sm">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-3 mb-3">
+          <div class="cc-stat-icon bg-info bg-opacity-10 text-info rounded p-2">
+            <i class="bi bi-bar-chart-line fs-4"></i>
+          </div>
+          <div>
+            <div class="fw-semibold">Reports</div>
+            <div class="text-muted small">Port utilization &amp; analytics</div>
+          </div>
+        </div>
+        <a href="/reports" class="btn btn-outline-secondary btn-sm w-100">
+          View Reports
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phase status notice -->
+  <div class="col-12">
+    <div class="alert alert-info border-0 d-flex align-items-center gap-2 small">
+      <i class="bi bi-info-circle-fill"></i>
+      <span>Phase 1 complete: project foundation, data model, auth. Inventory and work order features coming in subsequent phases.</span>
+    </div>
+  </div>
+</div>
+{% endblock %}

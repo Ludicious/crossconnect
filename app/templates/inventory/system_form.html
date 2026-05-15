@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{% if system %}Edit {{ system.name }}{% else %}New System{% endif %} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+  {% if system %}/ <a href="/inventory/systems/{{ system.id }}" class="text-muted text-decoration-none">{{ system.name }}</a>{% endif %}
+</div>
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">
+    {% if system %}Edit System: {{ system.name }}{% else %}New System{% endif %}
+  </div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label small fw-semibold">System Name <span class="text-danger">*</span>
+            <span class="text-muted fw-normal">(unique across all DCs)</span>
+          </label>
+          <input type="text" class="form-control mono" name="name"
+                 value="{{ system.name if system else '' }}" required autofocus
+                 placeholder="e.g. dc1-storage-44">
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Type</label>
+          <select class="form-select" name="system_type">
+            {% for t in ['server','storage','appliance','other'] %}
+            <option value="{{ t }}" {% if system and system.system_type==t %}selected{% elif not system and t=='server' %}selected{% endif %}>{{ t|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" name="notes" rows="2">{{ system.notes if system and system.notes else '' }}</textarea>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn cc-btn-primary">
+          {% if system %}Save Changes{% else %}Create System{% endif %}
+        </button>
+        <a href="{% if system %}/inventory/systems/{{ system.id }}{% else %}/inventory{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}

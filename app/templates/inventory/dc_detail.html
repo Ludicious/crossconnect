@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}{{ dc.name }} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+</div>
+
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h4 class="fw-bold mb-0">{{ dc.name }}
+      <span class="badge bg-secondary mono ms-1" style="font-size:.75rem">{{ dc.code }}</span>
+      {% if dc.has_grid_system %}<span class="badge bg-info ms-1" style="font-size:.65rem">Grid</span>{% endif %}
+    </h4>
+    {% if dc.address %}<p class="text-muted small mb-0 mt-1">{{ dc.address }}</p>{% endif %}
+  </div>
+  {% if user.role in ['architect','admin'] %}
+  <div class="d-flex gap-2">
+    <a href="/inventory/datacenters/{{ dc.id }}/edit" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    <a href="/inventory/datacenters/{{ dc.id }}/racks/new" class="btn cc-btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Add Rack
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <!-- Racks -->
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em">Racks</span>
+        <span class="badge bg-secondary">{{ racks|length }}</span>
+      </div>
+      <div class="card-body p-0">
+        {% if racks %}
+        <table class="table table-hover mb-0 small">
+          <thead><tr><th>Name</th><th>Grid</th><th>Size (U)</th><th>Devices</th><th>Switches</th><th></th></tr></thead>
+          <tbody>
+          {% for rack in racks %}
+          <tr>
+            <td><a href="/inventory/racks/{{ rack.id }}" class="text-decoration-none text-light fw-semibold">{{ rack.name }}</a></td>
+            <td class="mono text-muted">{{ rack.grid_position or '—' }}</td>
+            <td>{{ rack.total_ru }}U</td>
+            <td>{{ rack.devices|length }}</td>
+            <td>{{ rack.switches|length }}</td>
+            <td class="text-end">
+              {% if user.role in ['architect','admin'] %}
+              <a href="/inventory/racks/{{ rack.id }}/edit" class="btn btn-outline-secondary btn-sm py-0 px-2">Edit</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small p-3 mb-0">No racks yet.
+          {% if user.role in ['architect','admin'] %}
+          <a href="/inventory/datacenters/{{ dc.id }}/racks/new">Add one.</a>
+          {% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Contacts -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header py-2 fw-semibold small text-uppercase" style="letter-spacing:.05em">Contacts</div>
+      <div class="card-body p-0" x-data="contactsEditor({{ dc.contacts | tojson | safe }})">
+        <!-- View mode -->
+        <div x-show="!editing">
+          {% if dc.contacts %}
+          <ul class="list-group list-group-flush small">
+          {% for c in dc.contacts %}
+            <li class="list-group-item bg-transparent border-0 px-3 py-2">
+              <div class="fw-semibold">{{ c.name }}{% if c.role %} <span class="text-muted fw-normal">· {{ c.role }}</span>{% endif %}</div>
+              {% if c.email %}<div><a href="mailto:{{ c.email }}" class="text-decoration-none">{{ c.email }}</a></div>{% endif %}
+              {% if c.phone %}<div class="text-muted mono">{{ c.phone }}</div>{% endif %}
+            </li>
+          {% endfor %}
+          </ul>
+          {% else %}
+          <p class="text-muted small p-3 mb-0">No contacts.</p>
+          {% endif %}
+          {% if user.role in ['architect','admin'] %}
+          <div class="p-2 border-top" style="border-color:var(--cc-navy-border)!important">
+            <button class="btn btn-outline-secondary btn-sm w-100" @click="editing=true">
+              <i class="bi bi-pencil me-1"></i>Edit Contacts
+            </button>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Edit mode -->
+        <div x-show="editing">
+          <form method="post" action="/inventory/datacenters/{{ dc.id }}/contacts">
+            <div class="p-2" style="max-height:320px;overflow-y:auto">
+              <template x-for="(c, i) in contacts" :key="i">
+                <div class="border rounded p-2 mb-2" style="border-color:var(--cc-navy-border)!important">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-muted">Contact <span x-text="i+1"></span></span>
+                    <button type="button" class="btn-close btn-close-white" style="font-size:.6rem" @click="remove(i)"></button>
+                  </div>
+                  <input type="text" class="form-control form-control-sm mb-1" placeholder="Name *"
+                         :name="'contact_name_'+i" x-model="c.name" required>
+                  <input type="text" class="form-control form-control-sm mb-1" placeholder="Role"
+                         :name="'contact_role_'+i" x-model="c.role">
+                  <input type="email" class="form-control form-control-sm mb-1" placeholder="Email"
+                         :name="'contact_email_'+i" x-model="c.email">
+                  <input type="text" class="form-control form-control-sm mono" placeholder="Phone"
+                         :name="'contact_phone_'+i" x-model="c.phone">
+                </div>
+              </template>
+            </div>
+            <div class="p-2 d-flex gap-1 border-top" style="border-color:var(--cc-navy-border)!important">
+              <button type="button" class="btn btn-outline-secondary btn-sm flex-grow-1" @click="add()">
+                <i class="bi bi-plus-lg me-1"></i>Add
+              </button>
+              <button type="submit" class="btn cc-btn-primary btn-sm flex-grow-1">Save</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" @click="editing=false">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {% if dc.notes %}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header py-2 fw-semibold small text-uppercase" style="letter-spacing:.05em">Notes</div>
+      <div class="card-body small">{{ dc.notes }}</div>
+    </div>
+    {% endif %}
+
+    {% if user.role in ['architect','admin'] %}
+    <div class="card border-0 shadow-sm mt-3 border-danger">
+      <div class="card-body py-2">
+        <form method="post" action="/inventory/datacenters/{{ dc.id }}/delete"
+              onsubmit="return confirm('Delete {{ dc.name }}? This cannot be undone.')">
+          <button class="btn btn-outline-danger btn-sm w-100">
+            <i class="bi bi-trash me-1"></i>Delete Datacenter
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% block extra_scripts %}
+<script>
+function contactsEditor(initial) {
+  return {
+    editing: false,
+    contacts: initial.map(c => ({name:c.name, role:c.role||'', email:c.email||'', phone:c.phone||''})),
+    add() { this.contacts.push({name:'',role:'',email:'',phone:''}); },
+    remove(i) { this.contacts.splice(i,1); }
+  }
+}
+</script>
+{% endblock %}
+{% endblock %}

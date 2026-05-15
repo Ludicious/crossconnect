@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ system.name }} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+</div>
+
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h4 class="fw-bold mb-0 mono">{{ system.name }}
+      <span class="badge bg-secondary ms-1">{{ system.system_type }}</span>
+    </h4>
+    {% if system.notes %}<p class="text-muted small mb-0 mt-1">{{ system.notes }}</p>{% endif %}
+  </div>
+  {% if user.role in ['architect','admin'] %}
+  <div class="d-flex gap-2">
+    <a href="/inventory/systems/{{ system.id }}/edit" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold small text-uppercase" style="letter-spacing:.05em">
+    Devices ({{ system.devices|length }})
+  </div>
+  <div class="card-body p-0">
+    {% if system.devices %}
+    <table class="table table-hover mb-0 small">
+      <thead><tr><th>Name</th><th>Rack</th><th>DC</th><th>U</th><th>Serial</th></tr></thead>
+      <tbody>
+      {% for d in system.devices | sort(attribute='name') %}
+      <tr>
+        <td class="mono">{{ d.name }}</td>
+        <td><a href="/inventory/racks/{{ d.rack.id }}" class="text-decoration-none mono text-muted">{{ d.rack.name }}</a></td>
+        <td class="text-muted">{{ d.rack.datacenter.code if d.rack.datacenter else '—' }}</td>
+        <td class="mono">{{ d.starting_ru or '—' }}</td>
+        <td class="mono text-muted">{{ d.serial or '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small p-3 mb-0">No devices belong to this system yet. Add devices from within a rack.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if user.role in ['architect','admin'] %}
+<div class="mt-3">
+  <form method="post" action="/inventory/systems/{{ system.id }}/delete"
+        onsubmit="return confirm('Delete system {{ system.name }}?')">
+    <button class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-trash me-1"></i>Delete System
+    </button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{% if rack %}Edit {{ rack.name }}{% else %}New Rack{% endif %} — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+  / <a href="/inventory/datacenters/{{ dc.id }}" class="text-muted text-decoration-none">{{ dc.name }}</a>
+  {% if rack %}/ <a href="/inventory/racks/{{ rack.id }}" class="text-muted text-decoration-none">{{ rack.name }}</a>{% endif %}
+</div>
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">
+    {% if rack %}Edit Rack: {{ rack.name }}{% else %}New Rack in {{ dc.name }}{% endif %}
+  </div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label small fw-semibold">Rack Name <span class="text-danger">*</span></label>
+          <input type="text" class="form-control mono" name="name" value="{{ rack.name if rack else '' }}" required autofocus placeholder="e.g. S-A9K01 or CC22">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Grid Position
+            <span class="text-muted fw-normal">(optional)</span>
+          </label>
+          <input type="text" class="form-control mono" name="grid_position"
+                 value="{{ rack.grid_position if rack and rack.grid_position else '' }}"
+                 placeholder="e.g. BB-22">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Total U <span class="text-danger">*</span></label>
+          <input type="number" class="form-control" name="total_ru" min="1" max="54"
+                 value="{{ rack.total_ru if rack else 42 }}" required>
+        </div>
+        <div class="col-12">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" name="notes" rows="2">{{ rack.notes if rack and rack.notes else '' }}</textarea>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn cc-btn-primary">
+          {% if rack %}Save Changes{% else %}Create Rack{% endif %}
+        </button>
+        <a href="{% if rack %}/inventory/racks/{{ rack.id }}{% else %}/inventory/datacenters/{{ dc.id }}{% endif %}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endblock %}
