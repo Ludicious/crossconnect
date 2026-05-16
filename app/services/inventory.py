@@ -329,7 +329,9 @@ def autocomplete_devices(db: Session, q: str, rack_id: Optional[int] = None, lim
         query = query.filter(Device.rack_id == rack_id)
     rows = query.order_by(Device.name).limit(limit).all()
     return [{"id": r.id, "label": r.name, "name": r.name,
-             "serial": r.serial or "", "rack": r.rack.name} for r in rows]
+             "serial": r.serial or "", "rack": r.rack.name,
+             "rack_u": r.starting_ru,
+             "system": r.system.name if r.system else ""} for r in rows]
 
 
 def autocomplete_switches(db: Session, q: str, role: Optional[str] = None, limit: int = 10) -> list[dict]:
@@ -338,7 +340,8 @@ def autocomplete_switches(db: Session, q: str, role: Optional[str] = None, limit
         query = query.filter(Switch.switch_role == role)
     rows = query.order_by(Switch.name).limit(limit).all()
     return [{"id": r.id, "label": f"{r.name} ({r.switch_role})", "name": r.name,
-             "role": r.switch_role, "serial": r.serial or "", "rack": r.rack.name} for r in rows]
+             "role": r.switch_role, "serial": r.serial or "",
+             "rack": r.rack.name, "rack_u": r.starting_ru} for r in rows]
 
 
 # ── Device Types ──────────────────────────────────────────────────────────

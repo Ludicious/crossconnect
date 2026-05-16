@@ -605,3 +605,31 @@ async def dt_delete(dt_id: int, request: Request, db: Session = Depends(get_db),
 async def ac_device_types(q: str = Query(""), category: Optional[str] = Query(None),
                            db: Session = Depends(get_db), user=Depends(get_current_user)):
     return JSONResponse(svc.autocomplete_device_types(db, q, category))
+
+
+# ── Detail JSON endpoints (for grid autocomplete fill) ────────────────────
+
+@router.get("/api/switches/{switch_id}")
+async def switch_detail_json(switch_id: int, db: Session = Depends(get_db),
+                              user=Depends(get_current_user)):
+    sw = svc.get_switch(db, switch_id)
+    if not sw:
+        raise HTTPException(404)
+    return {
+        "id": sw.id, "name": sw.name, "serial": sw.serial or "",
+        "role": sw.switch_role, "rack": sw.rack.name,
+        "rack_u": sw.starting_ru,
+    }
+
+
+@router.get("/api/devices/{device_id}")
+async def device_detail_json(device_id: int, db: Session = Depends(get_db),
+                              user=Depends(get_current_user)):
+    d = svc.get_device(db, device_id)
+    if not d:
+        raise HTTPException(404)
+    return {
+        "id": d.id, "name": d.name, "serial": d.serial or "",
+        "rack": d.rack.name, "rack_u": d.starting_ru,
+        "system": d.system.name if d.system else "",
+    }

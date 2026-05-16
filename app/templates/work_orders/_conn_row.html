@@ -93,9 +93,9 @@
 
   {# Cable lengths (read-only) — helper macro for class assignment #}
   {% macro seg_class(v) %}seg-length {% if v == 'cross-cabinet' %}seg-cross{% elif v == 'incomplete' %}seg-incomplete{% elif v == 'exceeds_max' %}seg-exceeds{% elif v %}seg-numeric{% endif %}{% endmacro %}
-  <td class="{{ seg_class(c.seg1_length) }}" title="Device → Device Patch (or Device → Switch if no patches)">{{ c.seg1_length or '—' }}</td>
-  <td class="{{ seg_class(c.seg2_length) }}" title="Device Patch → Switch Patch">{{ c.seg2_length or '—' }}</td>
-  <td class="{{ seg_class(c.seg3_length) }}" title="Switch Patch → Switch">{{ c.seg3_length or '—' }}</td>
+  <td class="{{ seg_class(c.seg1_length) }}" data-seg="1" title="Device → Device Patch (or Device → Switch if no patches)">{{ c.seg1_length or '—' }}</td>
+  <td class="{{ seg_class(c.seg2_length) }}" data-seg="2" title="Device Patch → Switch Patch">{{ c.seg2_length or '—' }}</td>
+  <td class="{{ seg_class(c.seg3_length) }}" data-seg="3" title="Switch Patch → Switch">{{ c.seg3_length or '—' }}</td>
 
   {# Install status — saves immediately #}
   <td>

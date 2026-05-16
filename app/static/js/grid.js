@@ -35,8 +35,10 @@ function addRows(n) {
   for (let i = 0; i < n; i++) {
     tbody.insertAdjacentHTML('beforeend', buildEmptyRow());
   }
-  // Mark all new rows dirty immediately so Save picks them up
-  tbody.querySelectorAll('tr[data-id="new"]').forEach(r => {
+  // Mark only the newly added rows dirty (those without _acAttached yet)
+  const allNewRows = [...tbody.querySelectorAll('tr[data-id="new"]')];
+  const freshRows = allNewRows.slice(allNewRows.length - n);
+  freshRows.forEach(r => {
     r.classList.add('row-dirty');
     r.dataset.dirty = 'true';
     dirtyRows.add('new');
@@ -90,9 +92,9 @@ function buildEmptyRow() {
   <input type="hidden" class="conn-field" data-field="port_description" value="">
   <td class="col-extra"><input class="grid-input conn-field mono" data-field="vlan_vsan" oninput="markDirty(this)"></td>
   <td class="col-extra"><input class="grid-input conn-field" data-field="comments" oninput="markDirty(this)"></td>
-  <td class="seg-length text-muted">—</td>
-  <td class="seg-length text-muted">—</td>
-  <td class="seg-length text-muted">—</td>
+  <td class="seg-length text-muted" data-seg="1">—</td>
+  <td class="seg-length text-muted" data-seg="2">—</td>
+  <td class="seg-length text-muted" data-seg="3">—</td>
   <td><select class="grid-select conn-field" data-field="install_status" onchange="markDirty(this)">${statusOpts}</select></td>
   <td><input class="grid-input conn-field" data-field="install_notes" oninput="markDirty(this)"></td>
   <td class="row-error-cell text-danger" style="white-space:nowrap;min-width:20px" title=""></td>
@@ -130,6 +132,28 @@ function rowToFormData(row) {
   return data;
 }
 
+
+// ── Update seg length cells in a row ─────────────────────────────────────
+function _updateSegCells(row, seg1, seg2, seg3) {
+  [[1, seg1], [2, seg2], [3, seg3]].forEach(([n, val]) => {
+    const cell = row.querySelector(`[data-seg="${n}"]`);
+    if (!cell) return;
+    cell.className = 'seg-length';  // reset
+    if (!val) {
+      cell.textContent = '—';
+      cell.classList.add('text-muted');
+    } else if (val === 'cross-cabinet') {
+      cell.textContent = val; cell.classList.add('seg-cross');
+    } else if (val === 'incomplete') {
+      cell.textContent = val; cell.classList.add('seg-incomplete');
+    } else if (val === 'exceeds_max') {
+      cell.textContent = val; cell.classList.add('seg-exceeds');
+    } else {
+      cell.textContent = val; cell.classList.add('seg-numeric');
+    }
+  });
+}
+
 // ── Save all dirty rows ───────────────────────────────────────────────────
 async function saveAllDirty() {
   const btn = document.getElementById('save-btn');
@@ -162,14 +186,16 @@ async function saveAllDirty() {
         if (isNew && json.id) {
           row.dataset.id = json.id;
           row.id = `row-${json.id}`;
-          // Update delete button
           const delBtn = row.querySelector('button[onclick*="deleteRow"]');
           if (delBtn) delBtn.setAttribute('onclick', `deleteRow(${json.id}, this)`);
-          // Swap remove-unsaved button for delete button
           row.querySelector('button[onclick*="removeNewRow"]')?.setAttribute(
             'onclick', `deleteRow(${json.id}, this)`
           );
+          // Re-attach autocomplete to the now-persisted row
+          _attachRowAutocomplete(row);
         }
+        // Update seg length cells from server response
+        _updateSegCells(row, json.seg1, json.seg2, json.seg3);
         if (json.warnings?.length) {
           showToast(json.warnings.join('\n'), 'warning');
         }
@@ -473,3 +499,238 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById(`row-${firstErrorId}`)?.scrollIntoView({behavior:'smooth', block:'center'});
   }
 });
+
+// ── Grid autocomplete ─────────────────────────────────────────────────────
+//
+// Attaches a dropdown to grid input cells. Configured per-field in
+// attachGridAutocomplete() below.
+//
+// When the user picks a result, onPick(result, row) is called to fill
+// sibling cells in the same row automatically.
+
+const _acState = new WeakMap();  // input el → {dropdown, results, idx}
+
+function _acDropdown(input) {
+  let state = _acState.get(input);
+  if (state) return state;
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'cc-dropdown';
+  dropdown.style.cssText = 'position:absolute;z-index:2000;display:none;min-width:220px';
+  input.parentElement.style.position = 'relative';
+  input.parentElement.appendChild(dropdown);
+
+  state = { dropdown, results: [], idx: -1 };
+  _acState.set(input, state);
+  return state;
+}
+
+function _acShow(input, results) {
+  const state = _acDropdown(input);
+  state.results = results;
+  state.idx = -1;
+  const d = state.dropdown;
+
+  if (!results.length) { d.style.display = 'none'; return; }
+
+  d.innerHTML = results.map((r, i) =>
+    `<div class="cc-dropdown-item" data-idx="${i}">${r.label || r.name}</div>`
+  ).join('');
+
+  d.querySelectorAll('.cc-dropdown-item').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const r = results[parseInt(el.dataset.idx)];
+      _acHide(input);
+      input.value = r.name || r.label;
+      markDirty(input);
+      const onPick = input._acOnPick;
+      if (onPick) onPick(r, input.closest('tr'));
+    });
+  });
+
+  d.style.display = 'block';
+}
+
+function _acHide(input) {
+  const state = _acState.get(input);
+  if (state) state.dropdown.style.display = 'none';
+}
+
+function _acNavigate(input, e) {
+  const state = _acState.get(input);
+  if (!state || state.dropdown.style.display === 'none') return false;
+  const items = state.dropdown.querySelectorAll('.cc-dropdown-item');
+  if (!items.length) return false;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    state.idx = Math.min(state.idx + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    state.idx = Math.max(state.idx - 1, 0);
+  } else if (e.key === 'Enter' && state.idx >= 0) {
+    e.preventDefault();
+    items[state.idx].dispatchEvent(new MouseEvent('mousedown'));
+    return true;
+  } else if (e.key === 'Escape') {
+    _acHide(input);
+    return true;
+  } else {
+    return false;
+  }
+
+  items.forEach((el, i) => el.classList.toggle('cc-dropdown-item-active', i === state.idx));
+  return true;
+}
+
+async function _acSearch(url, q) {
+  if (!q || q.length < 1) return [];
+  try {
+    const r = await fetch(`${url}?q=${encodeURIComponent(q)}`);
+    return await r.json();
+  } catch { return []; }
+}
+
+let _acTimer = null;
+function _acAttach(input, url, onPick) {
+  input._acOnPick = onPick;
+  _acDropdown(input);  // init state
+
+  input.addEventListener('input', () => {
+    clearTimeout(_acTimer);
+    _acTimer = setTimeout(async () => {
+      const results = await _acSearch(url, input.value.trim());
+      _acShow(input, results);
+    }, 180);
+  });
+
+  input.addEventListener('focus', async () => {
+    if (input.value.trim().length >= 1) {
+      const results = await _acSearch(url, input.value.trim());
+      _acShow(input, results);
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => _acHide(input), 160);
+  });
+
+  input.addEventListener('keydown', e => _acNavigate(input, e));
+}
+
+// ── Field fill helpers ────────────────────────────────────────────────────
+
+function _setField(row, fieldName, value) {
+  if (value === null || value === undefined || value === '') return;
+  const el = row.querySelector(`[data-field="${fieldName}"]`);
+  if (el && !el.value) {   // only fill if currently empty — don't overwrite
+    el.value = value;
+    markDirty(el);
+  }
+}
+
+function _forceField(row, fieldName, value) {
+  if (value === null || value === undefined) return;
+  const el = row.querySelector(`[data-field="${fieldName}"]`);
+  if (el) { el.value = value; markDirty(el); }
+}
+
+// ── Attach autocomplete to all grid rows ──────────────────────────────────
+
+function attachGridAutocomplete() {
+  if (!CAN_EDIT) return;
+
+  document.querySelectorAll('tr.conn-row').forEach(row => {
+    _attachRowAutocomplete(row);
+  });
+}
+
+function _attachRowAutocomplete(row) {
+  // System name
+  const sysInput = row.querySelector('[data-field="system_name_raw"]');
+  if (sysInput && !sysInput._acAttached) {
+    sysInput._acAttached = true;
+    sysInput.dataset.acAttached = '1';
+    _acAttach(sysInput, '/inventory/autocomplete/systems', (r, row) => {
+      // system pick: no auto-fill (system doesn't carry rack info directly)
+    });
+  }
+
+  // Device name → fills device_rack_name_raw, device_rack_u, device_serial, system_name_raw
+  const devInput = row.querySelector('[data-field="device_name_raw"]');
+  if (devInput && !devInput._acAttached) {
+    devInput._acAttached = true;
+    devInput.dataset.acAttached = '1';
+    _acAttach(devInput, '/inventory/autocomplete/devices', (r, row) => {
+      _setField(row, 'device_rack_name_raw', r.rack);
+      _setField(row, 'device_rack_u', r.rack_u);
+      _setField(row, 'device_serial', r.serial);
+      _setField(row, 'system_name_raw', r.system);
+    });
+  }
+
+  // Device rack name (standalone — no fill, just autocomplete)
+  const devRackInput = row.querySelector('[data-field="device_rack_name_raw"]');
+  if (devRackInput && !devRackInput._acAttached) {
+    devRackInput._acAttached = true;
+    _acAttach(devRackInput, '/inventory/autocomplete/racks', (r, row) => {
+      // rack pick: no cascade needed
+    });
+  }
+
+  // Device patch rack
+  const dpRackInput = row.querySelector('[data-field="device_patch_rack_name_raw"]');
+  if (dpRackInput && !dpRackInput._acAttached) {
+    dpRackInput._acAttached = true;
+    _acAttach(dpRackInput, '/inventory/autocomplete/racks', () => {});
+  }
+
+  // Switch patch rack
+  const spRackInput = row.querySelector('[data-field="switch_patch_rack_name_raw"]');
+  if (spRackInput && !spRackInput._acAttached) {
+    spRackInput._acAttached = true;
+    _acAttach(spRackInput, '/inventory/autocomplete/racks', () => {});
+  }
+
+  // Switch name → fills switch_rack_name_raw, switch_rack_u, switch_serial
+  const swInput = row.querySelector('[data-field="switch_name_raw"]');
+  if (swInput && !swInput._acAttached) {
+    swInput._acAttached = true;
+    swInput.dataset.acAttached = '1';
+    _acAttach(swInput, '/inventory/autocomplete/switches', (r, row) => {
+      _setField(row, 'switch_rack_name_raw', r.rack);
+      _setField(row, 'switch_rack_u', r.rack_u);
+      _setField(row, 'switch_serial', r.serial);
+      // After filling rack fields, trigger cable length preview update
+      markDirty(row.querySelector('[data-field="switch_rack_name_raw"]') || swInput);
+    });
+  }
+
+  // Switch rack name (standalone)
+  const swRackInput = row.querySelector('[data-field="switch_rack_name_raw"]');
+  if (swRackInput && !swRackInput._acAttached) {
+    swRackInput._acAttached = true;
+    _acAttach(swRackInput, '/inventory/autocomplete/racks', () => {});
+  }
+}
+
+// Active dropdown CSS
+const _acStyle = document.createElement('style');
+_acStyle.textContent = `.cc-dropdown-item-active { background-color: rgba(61,142,240,.25) !important; }`;
+document.head.appendChild(_acStyle);
+
+// Run on page load for existing rows, and expose for new rows
+document.addEventListener('DOMContentLoaded', attachGridAutocomplete);
+
+// Patch addRows to attach autocomplete to new rows after they're added
+const _origAddRows = addRows;
+window.addRows = function(n) {
+  _origAddRows(n);
+  // Attach autocomplete only to rows that don't have it yet (_acAttached flag not set)
+  document.querySelectorAll('tr.conn-row').forEach(row => {
+    const needs = row.querySelector('[data-field="device_name_raw"]:not([data-ac-attached])') ||
+                  row.querySelector('[data-field="switch_name_raw"]:not([data-ac-attached])');
+    if (needs) _attachRowAutocomplete(row);
+  });
+};

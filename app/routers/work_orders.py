@@ -204,7 +204,8 @@ async def conn_create(
     conn, errors, warnings = svc.create_connection(db, wo_id, dict(form), user.id)
     if errors:
         return JSONResponse({"ok": False, "errors": errors, "warnings": warnings}, 400)
-    return JSONResponse({"ok": True, "id": conn.id, "warnings": warnings})
+    return JSONResponse({"ok": True, "id": conn.id, "warnings": warnings,
+                            "seg1": conn.seg1_length, "seg2": conn.seg2_length, "seg3": conn.seg3_length})
 
 
 @router.post("/{wo_id}/connections/bulk")
@@ -239,7 +240,8 @@ async def conn_update(
     conn, errors, warnings = svc.update_connection(db, conn, dict(form), user.id)
     if errors:
         return JSONResponse({"ok": False, "errors": errors, "warnings": warnings}, 400)
-    return JSONResponse({"ok": True, "warnings": warnings})
+    return JSONResponse({"ok": True, "warnings": warnings,
+                            "seg1": conn.seg1_length, "seg2": conn.seg2_length, "seg3": conn.seg3_length})
 
 
 @router.post("/{wo_id}/connections/{conn_id}/delete")

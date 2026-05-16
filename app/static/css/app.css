@@ -244,3 +244,14 @@ hr { border-color: var(--cc-navy-border); }
 .seg-cross     { color: #94a3b8; font-style: italic; font-size: .72rem; }
 .seg-incomplete{ color: #fb923c; }
 .seg-exceeds   { color: #f87171; font-weight: 600; }
+
+/* ── Grid autocomplete positioning ──────────────────────────────────────── */
+/* td needs relative positioning for the absolute dropdown */
+#conn-grid td { position: relative; }
+
+/* Slightly wider dropdown for grid context */
+#conn-grid .cc-dropdown {
+  min-width: 200px;
+  max-width: 320px;
+  font-size: .8rem;
+}
