@@ -254,3 +254,27 @@ hr { border-color: var(--cc-navy-border); }
   max-width: 320px;
   font-size: .8rem;
 }
+
+/* ── Grid select visual fixes ────────────────────────────────────────────── */
+/* Prevent selects from overlapping adjacent cell text */
+#conn-grid .grid-select {
+  position: relative;
+  z-index: 1;
+  min-width: 52px;
+  max-width: 100%;
+}
+
+/* Cable type select — needs enough room for "LC_Fiber" */
+#conn-grid [data-field="cable_type"] { min-width: 72px; }
+
+/* Status select */
+#conn-grid [data-field="install_status"] { min-width: 100px; }
+
+/* Fiber mode select — compact SM/MM */
+#conn-grid [data-field="fiber_mode"] { min-width: 52px; }
+
+/* LAG member index — number input, keep narrow */
+#conn-grid [data-field="lag_member_index"] { max-width: 44px; min-width: 36px; }
+
+/* Truncated status cell fix — allow status cell to wrap or show fully */
+#conn-grid td:has([data-field="install_status"]) { white-space: nowrap; }

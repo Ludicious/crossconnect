@@ -96,6 +96,9 @@ function buildEmptyRow() {
   <input type="hidden" class="conn-field" data-field="port_description" value="">
   <td class="col-extra"><input class="grid-input conn-field mono" data-field="vlan_vsan" oninput="markDirty(this)"></td>
   <td class="col-extra"><input class="grid-input conn-field" data-field="comments" oninput="markDirty(this)"></td>
+  <td class="col-extra"><select class="grid-select conn-field" data-field="fiber_mode" onchange="markDirty(this)"><option value="">—</option><option value="singlemode">SM</option><option value="multimode">MM</option></select></td>
+  <td class="col-extra"><input class="grid-input conn-field mono" data-field="lag_id" oninput="markDirty(this)" style="max-width:52px"></td>
+  <td class="col-extra"><input class="grid-input conn-field" data-field="lag_member_index" type="number" min="1" oninput="markDirty(this)" style="max-width:44px"></td>
   <td class="seg-length text-muted" data-seg="1">—</td>
   <td class="seg-length text-muted" data-seg="2">—</td>
   <td class="seg-length text-muted" data-seg="3">—</td>
