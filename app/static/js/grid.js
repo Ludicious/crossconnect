@@ -32,20 +32,24 @@ function markDirty(el) {
 // ── Add rows ──────────────────────────────────────────────────────────────
 function addRows(n) {
   const tbody = document.getElementById('conn-body');
+  const newRows = [];
   for (let i = 0; i < n; i++) {
     tbody.insertAdjacentHTML('beforeend', buildEmptyRow());
+    newRows.push(tbody.lastElementChild);
   }
-  // Mark only the newly added rows dirty (those without _acAttached yet)
-  const allNewRows = [...tbody.querySelectorAll('tr[data-id="new"]')];
-  const freshRows = allNewRows.slice(allNewRows.length - n);
-  freshRows.forEach(r => {
+  // Mark only the freshly added rows dirty
+  newRows.forEach(r => {
     r.classList.add('row-dirty');
     r.dataset.dirty = 'true';
     dirtyRows.add('new');
   });
   document.getElementById('save-btn').disabled = false;
-  // Scroll to last row
   tbody.lastElementChild?.scrollIntoView({block:'nearest'});
+  // Attach autocomplete — deferred so _attachRowAutocomplete is guaranteed defined
+  // (it lives later in this file; setTimeout(0) yields to let the full script finish)
+  setTimeout(() => {
+    newRows.forEach(r => _attachRowAutocomplete(r));
+  }, 0);
 }
 
 let _newRowSeq = 0;
@@ -514,15 +518,33 @@ function _acDropdown(input) {
   let state = _acState.get(input);
   if (state) return state;
 
+  // Attach to document.body with position:fixed so overflow:hidden/auto containers
+  // don't clip it (the table scroll container would otherwise cut it off).
   const dropdown = document.createElement('div');
   dropdown.className = 'cc-dropdown';
-  dropdown.style.cssText = 'position:absolute;z-index:2000;display:none;min-width:220px';
-  input.parentElement.style.position = 'relative';
-  input.parentElement.appendChild(dropdown);
+  dropdown.style.cssText = 'position:fixed;z-index:9999;display:none;min-width:220px;max-width:320px';
+  document.body.appendChild(dropdown);
 
   state = { dropdown, results: [], idx: -1 };
   _acState.set(input, state);
   return state;
+}
+
+function _acReposition(input) {
+  const state = _acState.get(input);
+  if (!state || state.dropdown.style.display === 'none') return;
+  const rect = input.getBoundingClientRect();
+  const dd = state.dropdown;
+  // Position below the input; flip up if it would overflow the viewport bottom
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const ddHeight = Math.min(220, dd.scrollHeight || 220);
+  if (spaceBelow < ddHeight && rect.top > ddHeight) {
+    dd.style.top = (rect.top - ddHeight) + 'px';
+  } else {
+    dd.style.top = rect.bottom + 'px';
+  }
+  dd.style.left = rect.left + 'px';
+  dd.style.width = Math.max(rect.width, 220) + 'px';
 }
 
 function _acShow(input, results) {
@@ -550,6 +572,7 @@ function _acShow(input, results) {
   });
 
   d.style.display = 'block';
+  _acReposition(input);
 }
 
 function _acHide(input) {
@@ -720,17 +743,20 @@ const _acStyle = document.createElement('style');
 _acStyle.textContent = `.cc-dropdown-item-active { background-color: rgba(61,142,240,.25) !important; }`;
 document.head.appendChild(_acStyle);
 
+// Reposition open dropdowns when the table scrolls or window resizes
+document.addEventListener('scroll', () => {
+  _acState.forEach((state, input) => {
+    if (state.dropdown.style.display !== 'none') _acReposition(input);
+  });
+}, true);  // capture phase catches scroll on any ancestor
+
+window.addEventListener('resize', () => {
+  _acState.forEach((state, input) => {
+    if (state.dropdown.style.display !== 'none') _acReposition(input);
+  });
+});
+
 // Run on page load for existing rows, and expose for new rows
 document.addEventListener('DOMContentLoaded', attachGridAutocomplete);
 
-// Patch addRows to attach autocomplete to new rows after they're added
-const _origAddRows = addRows;
-window.addRows = function(n) {
-  _origAddRows(n);
-  // Attach autocomplete only to rows that don't have it yet (_acAttached flag not set)
-  document.querySelectorAll('tr.conn-row').forEach(row => {
-    const needs = row.querySelector('[data-field="device_name_raw"]:not([data-ac-attached])') ||
-                  row.querySelector('[data-field="switch_name_raw"]:not([data-ac-attached])');
-    if (needs) _attachRowAutocomplete(row);
-  });
-};
+// autocomplete is now attached inside addRows() directly

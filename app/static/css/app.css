@@ -246,8 +246,7 @@ hr { border-color: var(--cc-navy-border); }
 .seg-exceeds   { color: #f87171; font-weight: 600; }
 
 /* ── Grid autocomplete positioning ──────────────────────────────────────── */
-/* td needs relative positioning for the absolute dropdown */
-#conn-grid td { position: relative; }
+/* dropdowns use position:fixed attached to body — no relative positioning needed on td */
 
 /* Slightly wider dropdown for grid context */
 #conn-grid .cc-dropdown {
