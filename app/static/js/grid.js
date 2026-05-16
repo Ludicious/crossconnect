@@ -236,22 +236,29 @@ function highlightErrors(row, errors) {
 async function saveInstallStatus(el, connId) {
   const status = el.value;
   const row = el.closest('tr');
-  // Also grab install_notes from same row
   const notes = row.querySelector('[data-field="install_notes"]')?.value || '';
-  const body = new URLSearchParams({install_status: status, install_notes: notes,
-    // Must include all mandatory fields to not wipe them — easiest: send full row
-    ...rowToFormData(row)
-  }).toString();
+
+  // Use the dedicated install-status endpoint — works for all roles,
+  // does not reset status back to pending, works on issued + in_progress WOs.
+  const body = new URLSearchParams({install_status: status, install_notes: notes}).toString();
   try {
-    const resp = await fetch(`/work-orders/${WO_ID}/connections/${connId}/edit`, {
+    const resp = await fetch(`/work-orders/${WO_ID}/connections/${connId}/install-status`, {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
       body,
     });
     const json = await resp.json();
-    if (!json.ok) showToast(json.errors?.join('\n') || 'Save failed', 'danger');
+    if (json.ok) {
+      // Visual feedback — briefly highlight the cell green
+      el.style.transition = 'background 0.3s';
+      el.style.background = 'rgba(34,197,94,0.2)';
+      setTimeout(() => { el.style.background = ''; }, 800);
+    } else {
+      showToast(json.errors?.join('\n') || 'Status save failed', 'danger');
+      // Revert the select to previous value if we know it
+    }
   } catch (e) {
-    showToast('Network error', 'danger');
+    showToast('Network error saving status', 'danger');
   }
 }
 

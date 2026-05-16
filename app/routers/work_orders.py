@@ -234,7 +234,7 @@ async def conn_update(
     if not conn or conn.work_order_id != wo_id:
         raise HTTPException(404)
     wo = svc.get_work_order(db, wo_id)
-    if wo.status not in ("draft", "issued"):
+    if wo.status not in ("draft", "issued", "in_progress"):
         raise HTTPException(400, "Work order is not editable")
     form = await request.form()
     conn, errors, warnings = svc.update_connection(db, conn, dict(form), user.id)
@@ -242,6 +242,36 @@ async def conn_update(
         return JSONResponse({"ok": False, "errors": errors, "warnings": warnings}, 400)
     return JSONResponse({"ok": True, "warnings": warnings,
                             "seg1": conn.seg1_length, "seg2": conn.seg2_length, "seg3": conn.seg3_length})
+
+
+
+@router.post("/{wo_id}/connections/{conn_id}/install-status")
+async def conn_install_status(
+    wo_id: int, conn_id: int, request: Request,
+    db: Session = Depends(get_db), user=Depends(get_current_user),
+):
+    """
+    DC tech endpoint — updates install_status and install_notes only.
+    Allowed for any authenticated user; does NOT reset install_status to pending.
+    Work order must be issued or in_progress.
+    """
+    conn = svc.get_connection(db, conn_id)
+    if not conn or conn.work_order_id != wo_id:
+        raise HTTPException(404)
+    wo = svc.get_work_order(db, wo_id)
+    if wo.status not in ("issued", "in_progress"):
+        raise HTTPException(400, "Work order is not in an editable state for techs")
+    form = await request.form()
+    install_status = form.get("install_status", conn.install_status)
+    install_notes = form.get("install_notes", conn.install_notes or "")
+    from app.models.connection import INSTALL_STATUSES
+    if install_status not in INSTALL_STATUSES:
+        return JSONResponse({"ok": False, "errors": [f"Invalid status: {install_status}"]}, 400)
+    conn.install_status = install_status
+    conn.install_notes = install_notes or None
+    conn.updated_by = user.id
+    db.commit()
+    return JSONResponse({"ok": True})
 
 
 @router.post("/{wo_id}/connections/{conn_id}/delete")

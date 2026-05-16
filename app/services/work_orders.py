@@ -314,8 +314,11 @@ def update_connection(db: Session, conn: Connection, form_data: dict,
     for k, v in fields.items():
         setattr(conn, k, v)
     conn.updated_by = updated_by
-    # Editing a row resets install_status to pending (per spec)
-    conn.install_status = "pending"
+    # Editing connection data resets install_status to pending (per spec),
+    # but only if the caller isn't explicitly setting a status themselves.
+    # If form_data contains install_status, honour it; otherwise reset to pending.
+    if "install_status" not in form_data or not form_data.get("install_status"):
+        conn.install_status = "pending"
 
     hard_errors = []
     warnings = []

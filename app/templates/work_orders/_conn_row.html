@@ -106,7 +106,7 @@
       {% endfor %}
     </select>
   </td>
-  <td><input class="grid-input conn-field" data-field="install_notes" value="{{ c.install_notes or '' }}" oninput="markDirty(this)"></td>
+  <td><input class="grid-input conn-field" data-field="install_notes" value="{{ c.install_notes or '' }}" oninput="markDirty(this)" onblur="saveInstallStatus(this.closest('tr').querySelector('[data-field=install_status]'), {{ c.id }})"></td>
 
   {# Row error indicator — populated by JS when issue validation fails #}
   <td class="row-error-cell text-danger" style="white-space:nowrap;min-width:20px" title=""></td>
