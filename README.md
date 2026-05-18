@@ -73,12 +73,12 @@ EOF
 ## Build phases
 
 - [x] Phase 1 — Foundation: models, migrations, auth, base layout
-- [ ] Phase 2 — Inventory CRUD with autocomplete
-- [ ] Phase 3 — Work order CRUD + connection editor grid
-- [ ] Phase 4 — Cable length service
-- [ ] Phase 5 — Report view with color coding
-- [ ] Phase 6 — DC tech status tracking + audit log
-- [ ] Phase 7 — Excel import
+- [x] Phase 2 — Inventory CRUD with autocomplete (datacenter, rack, system, device, switch, device type)
+- [x] Phase 3 — Work order CRUD + connection editor grid (inline editing, bulk save, duplicate detection)
+- [x] Phase 4 — Cable length service (seg1/2/3 auto-calculation, standard length rounding, slack)
+- [x] Phase 5 — Report view with color coding, inline install-status editing across all work orders
+- [x] Phase 6 — DC tech install-status tracking, audit log with filters and pagination
+- [x] Phase 7 — Excel import (configurable column map, canonical template download, NetBox aliases)
 - [ ] Phase 8 — Excel export matching template
 - [ ] Phase 9 — Port utilization analytics
 - [ ] Phase 10 — Recycle bin + admin tools + settings
