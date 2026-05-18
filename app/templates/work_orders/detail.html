@@ -152,6 +152,12 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
   </div>
 
   <div class="d-flex gap-2 align-items-center">
+    <!-- Export PDF — visible to all authenticated users -->
+    <a class="btn btn-outline-secondary btn-sm" href="/work-orders/{{ wo.id }}/export-pdf"
+       download="WO-{{ wo.name|replace(' ','-') }}-{{ wo.id }}.pdf"
+       title="Download PDF">
+      <i class="bi bi-file-pdf me-1"></i>Export PDF
+    </a>
     <!-- Expand/Collapse toggle -->
     <button class="btn btn-outline-secondary btn-sm" id="expand-btn" onclick="toggleExpand()">
       <i class="bi bi-arrows-expand me-1"></i>Expand Columns

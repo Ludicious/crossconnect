@@ -12,6 +12,7 @@ from app.routers.auth import get_current_user, require_roles
 import app.services.work_orders as svc
 import app.services.inventory as inv_svc
 from app.services.excel_import import parse_crossconnect_excel, generate_template
+from app.services.pdf_export import generate_work_order_pdf, sanitize_filename as _sanitize
 from app.services.audit import write_audit
 from app.models.work_order import VALID_WORK_TYPES
 from app.models.settings import AppSetting
@@ -87,6 +88,23 @@ async def wo_create(
         }, 400)
 
 
+# ── Template download — must be before /{wo_id} to avoid route shadowing ─
+
+@router.get("/import-template")
+async def import_template(
+    request: Request,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _arch_or_admin(request, db)
+    xlsx_bytes = generate_template()
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="crossconnect_template.xlsx"'},
+    )
+
+
 # ── Work order detail / editor ────────────────────────────────────────────
 
 @router.get("/{wo_id}", response_class=HTMLResponse)
@@ -140,6 +158,32 @@ async def wo_update(
     svc.update_work_order(db, wo, user_id=user.id, name=name, datacenter_id=datacenter_id,
                            work_type=work_type, target_date=td, notes=notes)
     return RedirectResponse(f"/work-orders/{wo_id}", status_code=302)
+
+
+# ── PDF export ────────────────────────────────────────────────────────────
+
+@router.get("/{wo_id}/export-pdf")
+async def wo_export_pdf(
+    wo_id: int, request: Request,
+    db: Session = Depends(get_db), user=Depends(get_current_user),
+):
+    wo = svc.get_work_order(db, wo_id)
+    if not wo:
+        raise HTTPException(404)
+    try:
+        pdf_bytes = generate_work_order_pdf(db, wo_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    safe_name = _sanitize(wo.name)
+    filename = f"WO-{safe_name}-{wo.id}.pdf"
+    write_audit(db, user.id, "medium", "work_order", wo_id, "export_pdf",
+                detail=f"PDF export of '{wo.name}'")
+    db.commit()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Status transitions ────────────────────────────────────────────────────
@@ -227,21 +271,6 @@ async def conn_bulk(
     return JSONResponse(result)
 
 
-@router.get("/import-template")
-async def import_template(
-    request: Request,
-    user=Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _arch_or_admin(request, db)
-    xlsx_bytes = generate_template()
-    return Response(
-        content=xlsx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="crossconnect_template.xlsx"'},
-    )
-
-
 @router.post("/{wo_id}/connections/import-excel")
 async def conn_import_excel(
     wo_id: int,
@@ -272,7 +301,7 @@ async def conn_import_excel(
         raise HTTPException(400, f"Could not parse Excel file: {e}")
 
     if not rows:
-        return JSONResponse({"ok": True, "created": 0, "skipped": [], "message": "No data rows found in file."})
+        return JSONResponse({"ok": True, "created": 0, "skipped": [], "message": "No valid data rows found. Ensure rows contain a non-blank value in the ACTION column."})
 
     clean_rows = [{k: (v if v is not None else "") for k, v in row.items()} for row in rows]
     result = svc.bulk_create_connections(db, wo_id, clean_rows, user.id)

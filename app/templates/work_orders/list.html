@@ -64,6 +64,10 @@
         <td class="text-muted">{{ wo.creator.display_name }}</td>
         <td class="text-end">
           <a href="/work-orders/{{ wo.id }}" class="btn btn-outline-secondary btn-sm py-0 px-2">Open</a>
+          <a href="/work-orders/{{ wo.id }}/export-pdf"
+             class="btn btn-outline-secondary btn-sm py-0 px-2 ms-1"
+             download="WO-{{ wo.id }}.pdf"
+             title="Download PDF"><i class="bi bi-file-pdf"></i></a>
         </td>
       </tr>
       {% endfor %}

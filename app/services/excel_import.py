@@ -55,17 +55,24 @@ def parse_crossconnect_excel(
     for sheet in wb.worksheets:
         if sheet.title in skip_sheets:
             continue
-        header_row = None
+        effective_map: dict | None = None
         for row in sheet.iter_rows(values_only=True):
             if all(v is None for v in row):
                 continue
-            if header_row is None:
-                header_row = row
+            if effective_map is None:
+                # Auto-detect column positions from header row; explicit
+                # column_map overrides any auto-detected positions.
+                auto = {
+                    str(v).strip().lower(): i
+                    for i, v in enumerate(row)
+                    if v is not None
+                }
+                effective_map = {**auto, **column_map}
                 continue
             if all(v is None for v in row):
                 continue
             record: dict = {}
-            for field, col_idx in column_map.items():
+            for field, col_idx in effective_map.items():
                 if col_idx < len(row):
                     record[field] = _coerce(field, row[col_idx])
                 else:

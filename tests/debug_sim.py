@@ -598,6 +598,88 @@ def test_work_orders(db, dc: Datacenter, rack: Rack, sw: Switch, user: User):
     check("Deleted connections tracked (R-rows + c3)", deleted >= 2, f"{deleted} deleted")
 
 
+# ── PDF export tests ──────────────────────────────────────────────────────
+
+def test_pdf_export(db, dc: Datacenter, user: User):
+    section("PDF Export")
+    from app.services.pdf_export import generate_work_order_pdf
+
+    # ── Test 1: WO with zero connections ──────────────────────────────────
+    wo_empty = wo_svc.create_work_order(
+        db, name="_SIM PDF Empty WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo_empty.id)
+    try:
+        pdf = generate_work_order_pdf(db, wo_empty.id)
+        check("PDF: zero connections — returns bytes", isinstance(pdf, bytes))
+        check("PDF: zero connections — starts with %PDF", pdf[:4] == b"%PDF")
+    except Exception as e:
+        check("PDF: zero connections — returns bytes", False, str(e))
+        check("PDF: zero connections — starts with %PDF", False, str(e))
+
+    # ── Test 2: WO with connections (no patch data) ───────────────────────
+    wo_conn = wo_svc.create_work_order(
+        db, name="_SIM PDF Conn WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo_conn.id)
+    wo_svc.create_connection(db, wo_conn.id, {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+        "device_rack_name_raw": "_SIM-RACK", "device_rack_u": "5",
+        "device_slot": "1a", "device_port": "eth0",
+        "switch_rack_name_raw": "_SIM-RACK", "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "Gi99/20",
+        "install_status": "done",
+    }, user.id)
+    wo_svc.create_connection(db, wo_conn.id, {
+        "action": "R", "cable_type": "RJ45", "purpose": "management",
+        "device_rack_name_raw": "_SIM-RACK", "device_rack_u": "6",
+        "device_slot": "1a", "device_port": "eth1",
+        "switch_rack_name_raw": "_SIM-RACK", "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "Gi99/21",
+    }, user.id)
+    try:
+        pdf = generate_work_order_pdf(db, wo_conn.id)
+        check("PDF: with connections — returns bytes", isinstance(pdf, bytes))
+        check("PDF: with connections — starts with %PDF", pdf[:4] == b"%PDF")
+    except Exception as e:
+        check("PDF: with connections — returns bytes", False, str(e))
+        check("PDF: with connections — starts with %PDF", False, str(e))
+
+    # ── Test 3: WO with connections that have patch data ─────────────────
+    wo_patch = wo_svc.create_work_order(
+        db, name="_SIM PDF Patch WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo_patch.id)
+    wo_svc.create_connection(db, wo_patch.id, {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "data",
+        "device_rack_name_raw": "_SIM-RACK", "device_rack_u": "7",
+        "device_slot": "2a", "device_port": "hba0",
+        "switch_rack_name_raw": "_SIM-RACK", "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "Gi99/22",
+        "device_patch_rack_name_raw": "_SIM-PP-RACK",
+        "device_patch_ru": "3",
+        "device_patch_side": "front",
+        "device_patch_port": "PP-01",
+    }, user.id)
+    try:
+        pdf = generate_work_order_pdf(db, wo_patch.id)
+        check("PDF: patch data — returns bytes", isinstance(pdf, bytes))
+        check("PDF: patch data — starts with %PDF", pdf[:4] == b"%PDF")
+    except Exception as e:
+        check("PDF: patch data — returns bytes", False, str(e))
+        check("PDF: patch data — starts with %PDF", False, str(e))
+
+    # ── Test 4: ValueError for missing WO ─────────────────────────────────
+    expect_error(
+        "PDF: ValueError for missing WO",
+        lambda: generate_work_order_pdf(db, 999_999),
+        "not found",
+    )
+
+
 # ── Excel import tests ────────────────────────────────────────────────────
 
 def test_excel_import(db, dc, rack, user):
@@ -753,6 +835,7 @@ def main():
         sw = test_switches(db, rack)
         test_template_renders(db, dc, rack, user)
         test_excel_import(db, dc, rack, user)
+        test_pdf_export(db, dc, user)
         test_work_orders(db, dc, rack, sw, user)
     except Exception as e:
         import traceback
