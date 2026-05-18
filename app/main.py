@@ -11,6 +11,7 @@ from app.routers import work_orders as work_orders_router
 from app.routers import reports as reports_router
 from app.routers import admin as admin_router
 from app.routers import audit as audit_router
+from app.routers import analytics as analytics_router
 from app.db import get_db
 
 app = FastAPI(title=settings.app_title, version=settings.app_version, docs_url="/api/docs")
@@ -32,6 +33,7 @@ app.include_router(work_orders_router.router)
 app.include_router(reports_router.router)
 app.include_router(admin_router.router)
 app.include_router(audit_router.router)
+app.include_router(analytics_router.router)
 
 
 @app.get("/healthz")

@@ -1,0 +1,29 @@
+<div class="card border-0 shadow-sm mb-3 {% if w.severity == 'adjacent' %}border-start border-danger border-3{% else %}border-start border-warning border-3{% endif %}" style="border-left-width:3px!important">
+  <div class="card-body py-2 px-3">
+    <div class="fw-semibold small mb-2">
+      <span class="mono">{{ w.device_name }}</span>
+      <i class="bi bi-arrow-right mx-1 text-muted"></i>
+      <span class="mono">{{ w.switch_name }}</span>
+      <span class="badge {% if w.severity == 'adjacent' %}bg-danger{% else %}bg-warning text-dark{% endif %} ms-2 small">
+        min separation: {{ w.min_separation }} port(s)
+      </span>
+    </div>
+    <table class="table table-sm mb-0 small" style="font-size:.78rem">
+      <thead>
+        <tr class="text-uppercase" style="font-size:.65rem;letter-spacing:.04em">
+          <th>Work Order</th><th>Slot</th><th>Port</th><th>Conn #</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in w.ports %}
+      <tr>
+        <td>{{ p.work_order_name }}</td>
+        <td class="mono">{{ p.switch_slot or '—' }}</td>
+        <td class="mono fw-semibold">{{ p.switch_port }}</td>
+        <td class="text-muted">#{{ p.connection_id }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

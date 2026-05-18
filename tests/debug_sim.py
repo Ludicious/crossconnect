@@ -418,6 +418,32 @@ def test_template_renders(db, dc, rack, user):
         "FABRICS": ["A","B"],
     })
 
+    # Analytics pages
+    from app.services.analytics import get_rack_elevation, get_port_adjacency_warnings, get_port_utilization
+    from app.services.inventory import list_datacenters as _list_dcs
+    from app.services.work_orders import list_work_orders as _list_wos
+    elev = get_rack_elevation(db, rack.id)
+    if elev:
+        render("analytics/rack_elevation.html", {
+            "rack": elev["rack"],
+            "slots": elev["slots"],
+            "unpositioned": elev["unpositioned"],
+            "summary": elev["summary"],
+        })
+    render("analytics/port_adjacency.html", {
+        "warnings": [],
+        "datacenters": _list_dcs(db),
+        "work_orders": _list_wos(db),
+        "filter_wo_id": None,
+        "filter_dc_id": None,
+        "threshold": 4,
+    })
+    render("analytics/port_utilization.html", {
+        "rows": get_port_utilization(db),
+        "datacenters": _list_dcs(db),
+        "filter_dc_id": None,
+    })
+
     # Audit log page
     from app.models.audit import AuditLog
     render("audit/index.html", {
@@ -596,6 +622,78 @@ def test_work_orders(db, dc: Datacenter, rack: Rack, sw: Switch, user: User):
     check("Total connections tracked", total > 0, f"{total} total")
     check("Active connections > 0", active > 0, f"{active} active")
     check("Deleted connections tracked (R-rows + c3)", deleted >= 2, f"{deleted} deleted")
+
+
+# ── Analytics tests ───────────────────────────────────────────────────────
+
+def test_analytics(db, dc: Datacenter, rack: Rack, user: User, sw: Switch):
+    section("Analytics")
+    from app.services.analytics import (
+        get_rack_elevation,
+        get_port_adjacency_warnings,
+        get_port_utilization,
+    )
+
+    # ── Rack elevation ─────────────────────────────────────────────────────
+    data = get_rack_elevation(db, rack.id)
+    check("Elevation: returns dict for valid rack", data is not None)
+    check("Elevation: slots list non-empty", len(data["slots"]) > 0,
+          f"{len(data['slots'])} slots")
+    check("Elevation: summary fields present",
+          all(k in data["summary"] for k in
+              ("total_ru", "used_ru", "free_ru", "device_count",
+               "switch_count", "patch_panel_count")))
+    check("Elevation: used_ru > 0", data["summary"]["used_ru"] > 0,
+          f"used_ru={data['summary']['used_ru']}")
+    check("Elevation: used_ru + free_ru == total_ru",
+          data["summary"]["used_ru"] + data["summary"]["free_ru"] == data["summary"]["total_ru"])
+    check("Elevation: None for missing rack",
+          get_rack_elevation(db, 999_999) is None)
+
+    # ── Port adjacency ─────────────────────────────────────────────────────
+    # Create a WO with two connections for the same device to same switch,
+    # switch ports 4 and 5 (numeric, adjacent)
+    wo_adj = wo_svc.create_work_order(
+        db, name="_SIM Adjacency WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo_adj.id)
+    wo_svc.create_connection(db, wo_adj.id, {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+        "device_name_raw": "_SIM-ADJ-DEVICE",
+        "device_rack_name_raw": rack.name, "device_rack_u": "8",
+        "device_slot": "hba0", "device_port": "p0",
+        "switch_name_raw": "_SIM-ADJ-SWITCH",
+        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "4",
+    }, user.id)
+    wo_svc.create_connection(db, wo_adj.id, {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+        "device_name_raw": "_SIM-ADJ-DEVICE",
+        "device_rack_name_raw": rack.name, "device_rack_u": "8",
+        "device_slot": "hba1", "device_port": "p1",
+        "switch_name_raw": "_SIM-ADJ-SWITCH",
+        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "5",
+    }, user.id)
+
+    warnings = get_port_adjacency_warnings(db, wo_id=wo_adj.id)
+    check("Adjacency: returns list", isinstance(warnings, list))
+    check("Adjacency: at least one warning", len(warnings) > 0,
+          f"{len(warnings)} warnings")
+    if warnings:
+        check("Adjacency: severity is 'adjacent' for ports 4 and 5",
+              warnings[0]["severity"] == "adjacent",
+              f"severity={warnings[0]['severity']}")
+        check("Adjacency: min_separation = 1",
+              warnings[0]["min_separation"] == 1,
+              f"min_sep={warnings[0]['min_separation']}")
+
+    # ── Port utilization ───────────────────────────────────────────────────
+    rows = get_port_utilization(db)
+    check("Utilization: returns list", isinstance(rows, list))
+    # The sim sw has no device_type with port_count — check no exception
+    check("Utilization: no exception raised", True)
 
 
 # ── PDF export tests ──────────────────────────────────────────────────────
@@ -835,6 +933,7 @@ def main():
         sw = test_switches(db, rack)
         test_template_renders(db, dc, rack, user)
         test_excel_import(db, dc, rack, user)
+        test_analytics(db, dc, rack, user, sw)
         test_pdf_export(db, dc, user)
         test_work_orders(db, dc, rack, sw, user)
     except Exception as e:

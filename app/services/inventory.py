@@ -412,7 +412,9 @@ def get_device_type(db: Session, dt_id: int) -> Optional[DeviceType]:
 
 def create_device_type(db: Session, manufacturer: str, model: str,
                         category: str = "server", rack_u: Optional[int] = None,
-                        slot_count: Optional[int] = None, notes: str = "",
+                        slot_count: Optional[int] = None,
+                        port_count: Optional[int] = None,
+                        notes: str = "",
                         user_id: Optional[int] = None) -> DeviceType:
     if db.query(DeviceType).filter(
         func.lower(DeviceType.manufacturer) == manufacturer.lower(),
@@ -420,7 +422,8 @@ def create_device_type(db: Session, manufacturer: str, model: str,
     ).first():
         raise ValueError(f"Device type '{manufacturer} {model}' already exists.")
     dt = DeviceType(manufacturer=manufacturer, model=model, category=category,
-                    rack_u=rack_u, slot_count=slot_count, notes=notes or None)
+                    rack_u=rack_u, slot_count=slot_count, port_count=port_count,
+                    notes=notes or None)
     db.add(dt)
     db.flush()
     write_audit(db, user_id, "wide", "device_type", dt.id, "create",

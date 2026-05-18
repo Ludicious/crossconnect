@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Rack Elevation — {{ rack.name }} — CrossConnect{% endblock %}
+
+{% block extra_head %}
+<style>
+.elevation-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.elevation-table td, .elevation-table th {
+  border: 1px solid var(--cc-navy-border, #2a3a4a);
+  vertical-align: middle;
+  padding: 2px 6px;
+}
+.ru-col { width: 52px; text-align: center; font-size: .72rem; color: #6b7280;
+          font-family: monospace; white-space: nowrap; }
+.slot-empty    { background: transparent; min-height: 22px; }
+.slot-cont     { background: repeating-linear-gradient(
+                   135deg, transparent, transparent 4px,
+                   rgba(255,255,255,.03) 4px, rgba(255,255,255,.03) 8px); }
+.slot-device   { background: #dbeafe; color: #1e3a5f; }
+.slot-storage  { background: #fef9c3; color: #3a2800; }
+.slot-switch-lan { background: #dcfce7; color: #14532d; }
+.slot-switch-san { background: #fce7f3; color: #701a50; }
+.slot-patch    { background: #f3f4f6; color: #374151; }
+.slot-name     { font-size: .8rem; font-weight: 600; font-family: monospace; }
+.slot-meta     { font-size: .68rem; color: #555; white-space: nowrap;
+                 overflow: hidden; text-overflow: ellipsis; }
+.conn-badge    { display:inline-block; font-size:.6rem; padding:1px 5px;
+                 border-radius:10px; background:#1e3a5f; color:#fff;
+                 margin-left:4px; vertical-align:middle; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none">
+    <i class="bi bi-chevron-left me-1"></i>Inventory
+  </a>
+  / <a href="/inventory/racks/{{ rack.id }}" class="text-muted text-decoration-none">{{ rack.name }}</a>
+  / Rack Elevation
+</div>
+
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h4 class="fw-bold mb-0 mono">{{ rack.name }}
+      {% if rack.grid_position %}
+      <span class="text-muted fw-normal small ms-2">{{ rack.grid_position }}</span>
+      {% endif %}
+    </h4>
+    <p class="text-muted small mb-0">{{ rack.total_ru }}U cabinet</p>
+  </div>
+</div>
+
+<!-- Summary bar -->
+<div class="d-flex gap-3 mb-4 flex-wrap">
+  {% set pct = (summary.used_ru / summary.total_ru * 100)|round(0)|int if summary.total_ru else 0 %}
+  <div class="card border-0 shadow-sm px-3 py-2 text-center" style="min-width:90px">
+    <div class="fw-bold">{{ summary.total_ru }}</div>
+    <div class="text-muted small">Total U</div>
+  </div>
+  <div class="card border-0 shadow-sm px-3 py-2 text-center" style="min-width:90px">
+    <div class="fw-bold text-warning">{{ summary.used_ru }}</div>
+    <div class="text-muted small">Used U</div>
+  </div>
+  <div class="card border-0 shadow-sm px-3 py-2 text-center" style="min-width:90px">
+    <div class="fw-bold text-success">{{ summary.free_ru }}</div>
+    <div class="text-muted small">Free U</div>
+  </div>
+  <div class="card border-0 shadow-sm px-3 py-2 text-center" style="min-width:90px">
+    <div class="fw-bold">{{ summary.device_count }}</div>
+    <div class="text-muted small">Devices</div>
+  </div>
+  <div class="card border-0 shadow-sm px-3 py-2 text-center" style="min-width:90px">
+    <div class="fw-bold">{{ summary.switch_count }}</div>
+    <div class="text-muted small">Switches</div>
+  </div>
+  <div class="card border-0 shadow-sm px-3 py-2 text-center" style="min-width:90px">
+    <div class="fw-bold">{{ summary.patch_panel_count }}</div>
+    <div class="text-muted small">Patch Panels</div>
+  </div>
+  <div class="card border-0 shadow-sm px-3 py-2 text-center flex-grow-1">
+    <div class="fw-bold">{{ pct }}%</div>
+    <div class="progress mt-1" style="height:6px;min-width:80px">
+      <div class="progress-bar {% if pct >= 90 %}bg-danger{% elif pct >= 70 %}bg-warning{% else %}bg-success{% endif %}"
+           style="width:{{ pct }}%"></div>
+    </div>
+    <div class="text-muted small">Occupied</div>
+  </div>
+</div>
+
+<!-- Colour legend -->
+<div class="d-flex gap-2 mb-3 flex-wrap small">
+  <span class="badge fw-normal px-2 py-1" style="background:#dbeafe;color:#1e3a5f">Server</span>
+  <span class="badge fw-normal px-2 py-1" style="background:#fef9c3;color:#3a2800">Storage</span>
+  <span class="badge fw-normal px-2 py-1" style="background:#dcfce7;color:#14532d">Switch LAN</span>
+  <span class="badge fw-normal px-2 py-1" style="background:#fce7f3;color:#701a50">Switch SAN</span>
+  <span class="badge fw-normal px-2 py-1" style="background:#f3f4f6;color:#374151">Patch Panel</span>
+</div>
+
+<!-- Elevation table -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0" style="overflow-x:auto">
+    <table class="elevation-table">
+      <thead>
+        <tr>
+          <th class="ru-col" style="background:var(--cc-navy-light)">U</th>
+          <th style="background:var(--cc-navy-light);font-size:.75rem;padding:4px 8px">Device / Equipment</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for slot in slots %}
+        {% if slot.type == 'continuation' %}
+        <tr style="height:22px">
+          <td class="ru-col">{{ slot.ru }}</td>
+          {# device cell covered by rowspan from main slot — no td here #}
+        </tr>
+        {% elif slot.type == 'empty' %}
+        <tr style="height:22px">
+          <td class="ru-col">{{ slot.ru }}</td>
+          <td class="slot-empty"></td>
+        </tr>
+        {% elif slot.type == 'unpositioned_header' %}
+        {# handled separately below #}
+        {% else %}
+          {# device / switch / patch_panel #}
+          {% set row_h = [slot.height_u * 26, 34] | max %}
+          {% if slot.type == 'switch' %}
+            {% set slot_cls = 'slot-switch-san' if slot.role == 'SAN' else 'slot-switch-lan' %}
+            {% set detail_url = '/inventory/switches/' ~ slot.id ~ '/edit' %}
+          {% elif slot.type == 'patch_panel' %}
+            {% set slot_cls = 'slot-patch' %}
+            {% set detail_url = None %}
+          {% elif slot.category == 'storage' %}
+            {% set slot_cls = 'slot-storage' %}
+            {% set detail_url = '/inventory/devices/' ~ slot.id ~ '/edit' %}
+          {% else %}
+            {% set slot_cls = 'slot-device' %}
+            {% set detail_url = '/inventory/devices/' ~ slot.id ~ '/edit' %}
+          {% endif %}
+          <tr style="height:{{ row_h }}px">
+            <td class="ru-col">{{ slot.ru }}</td>
+            <td class="{{ slot_cls }}" rowspan="{{ slot.height_u }}" style="vertical-align:middle;padding:4px 8px">
+              {% if detail_url %}
+              <a href="{{ detail_url }}" class="text-decoration-none" style="color:inherit">
+                <span class="slot-name">{{ slot.name }}</span>
+              </a>
+              {% else %}
+              <span class="slot-name">{{ slot.name }}</span>
+              {% endif %}
+              {% if slot.connection_count %}
+              <span class="conn-badge">{{ slot.connection_count }} conn</span>
+              {% endif %}
+              {% if slot.device_type %}
+              <div class="slot-meta">{{ slot.device_type }}</div>
+              {% endif %}
+              {% if slot.serial %}
+              <div class="slot-meta">S/N: {{ slot.serial }}</div>
+              {% endif %}
+              {% if slot.role %}
+              <div class="slot-meta">{{ slot.role }}</div>
+              {% endif %}
+            </td>
+          </tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if unpositioned %}
+<div class="mt-4">
+  <h6 class="fw-semibold text-muted text-uppercase small mb-2" style="letter-spacing:.05em">
+    Unpositioned Items
+  </h6>
+  <p class="text-muted small mb-2">
+    These items are assigned to this rack but have no U position set.
+    Edit each item to assign a starting U.
+  </p>
+  <div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0 small">
+        <thead><tr><th>Type</th><th>Name</th><th>Device Type</th><th>Connections</th></tr></thead>
+        <tbody>
+        {% for item in unpositioned %}
+        <tr>
+          <td class="text-muted">{{ item.type|capitalize }}</td>
+          <td class="mono fw-semibold">{{ item.name }}</td>
+          <td class="text-muted">{{ item.device_type or '—' }}</td>
+          <td>{% if item.connection_count %}<span class="badge bg-secondary">{{ item.connection_count }}</span>{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

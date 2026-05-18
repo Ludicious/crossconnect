@@ -64,6 +64,11 @@ DEFAULT_SETTINGS = [
         _json.dumps(_HONDA_MAP),
         "Example alternate column map for Honda/legacy 18-col layout (reference only — copy key and edit value to activate)",
     ),
+    (
+        "port_adjacency_threshold",
+        "4",
+        "Switch ports within this many positions of each other on the same switch are flagged as too close for redundant connections to the same device.",
+    ),
 ]
 
 
@@ -102,6 +107,15 @@ def seed():
                 print(f"  Setting exists:  {key} (skipped)")
 
         db.commit()
+
+        # ── Switch type reference data ─────────────────────────────────────
+        try:
+            from seed_data.switch_types import seed_switch_types
+            sw_result = seed_switch_types(db)
+            print(f"  Switch types: {sw_result['created']} created, {sw_result['skipped']} skipped")
+        except Exception as e:
+            print(f"  WARNING: switch_types seed failed: {e}")
+
         print("Seed complete.")
 
     finally:

@@ -19,13 +19,16 @@
       {% if rack.grid_position %}· Grid: <span class="mono">{{ rack.grid_position }}</span>{% endif %}
     </p>
   </div>
-  {% if user.role in ['architect','admin'] %}
   <div class="d-flex gap-2">
+    <a href="/analytics/rack/{{ rack.id }}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-layout-three-columns me-1"></i>View Rack Elevation
+    </a>
+    {% if user.role in ['architect','admin'] %}
     <a href="/inventory/racks/{{ rack.id }}/edit" class="btn btn-outline-secondary btn-sm">
       <i class="bi bi-pencil me-1"></i>Edit Rack
     </a>
+    {% endif %}
   </div>
-  {% endif %}
 </div>
 
 <div class="row g-3">

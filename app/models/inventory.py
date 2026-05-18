@@ -75,6 +75,8 @@ class DeviceType(Base):
     rack_u: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Non-null means this chassis can host child devices; value = number of slots
     slot_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Total switchport capacity — only meaningful for switch device types
+    port_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
