@@ -133,7 +133,7 @@
           <label class="form-label">Backup Directory</label>
           <input type="text" name="backup_directory" class="form-control"
                  value="{{ settings.get('backup_directory', './backups') }}">
-          <div class="form-text">Used by Phase 11 scheduled backup cron job.</div>
+          <div class="form-text">Directory path for scheduled backups. Used by the install script to configure automated backup jobs.</div>
         </div>
       </div>
     </div>
