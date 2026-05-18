@@ -29,11 +29,20 @@ class WorkOrder(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
 
     datacenter: Mapped["Datacenter"] = relationship(  # type: ignore[name-defined]
         "Datacenter", back_populates="work_orders"
     )
-    creator: Mapped["User"] = relationship("User", back_populates="work_orders")  # type: ignore[name-defined]
+    creator: Mapped["User"] = relationship(  # type: ignore[name-defined]
+        "User", back_populates="work_orders", foreign_keys="[WorkOrder.created_by]"
+    )
     connections: Mapped[list["Connection"]] = relationship(  # type: ignore[name-defined]
         "Connection", back_populates="work_order"
+    )
+    deleter: Mapped[Optional["User"]] = relationship(  # type: ignore[name-defined]
+        "User", foreign_keys="[WorkOrder.deleted_by]"
     )

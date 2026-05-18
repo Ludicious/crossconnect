@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Tuning — Admin — CrossConnect{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-sliders me-2"></i>Tuning</h2>
+</div>
+
+{% if saved %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+  <i class="bi bi-check-circle me-2"></i>Settings saved.
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+  <i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<form method="post" action="/admin/tuning">
+
+  <!-- Group 1: Cable Length -->
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">
+      <i class="bi bi-rulers me-2"></i>Cable Length
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Slack per End (inches)</label>
+          <input type="number" name="cable_slack_inches_per_end" class="form-control"
+                 value="{{ settings.get('cable_slack_inches_per_end', '18') }}" min="0" step="1">
+          <div class="form-text">Inches of slack added per cable end.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Standard Lengths (metres)</label>
+          <input type="text" name="cable_standard_lengths_m" class="form-control"
+                 value="{{ settings.get('cable_standard_lengths_m', '0.5,1,2,3,5,7,10') }}">
+          <div class="form-text">Comma-separated numbers, e.g. 0.5,1,2,3,5,7,10</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Max Rack RU</label>
+          <input type="number" name="max_rack_ru" class="form-control"
+                 value="{{ settings.get('max_rack_ru', '54') }}" min="1" step="1">
+          <div class="form-text">Maximum valid RU value (1..max_rack_ru).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group 2: Audit & Analytics -->
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">
+      <i class="bi bi-journal-text me-2"></i>Audit &amp; Analytics
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Audit Level</label>
+          <select name="audit_level" class="form-select">
+            {% for level in ['none', 'work_orders', 'medium', 'wide'] %}
+            <option value="{{ level }}" {% if settings.get('audit_level') == level %}selected{% endif %}>{{ level }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Controls how much is logged to the audit trail.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Port Adjacency Threshold</label>
+          <input type="number" name="port_adjacency_threshold" class="form-control"
+                 value="{{ settings.get('port_adjacency_threshold', '4') }}" min="1" step="1">
+          <div class="form-text">Ports within this many positions on the same switch are flagged.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group 3: Excel Import -->
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">
+      <i class="bi bi-file-earmark-spreadsheet me-2"></i>Excel Import
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Skip Sheets</label>
+          <input type="text" name="excel_import_skip_sheets" class="form-control"
+                 value="{{ settings.get('excel_import_skip_sheets', 'Schema') }}">
+          <div class="form-text">Comma-separated sheet names to ignore during import.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Active Column Map</label>
+          <textarea name="excel_import_column_map" class="form-control font-monospace" rows="6"
+                    id="activeColMap">{{ settings.get('excel_import_column_map', '{}') }}</textarea>
+          <div class="form-text d-flex justify-content-between">
+            <span>JSON mapping field names to 0-based column indices.</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="validateJson('activeColMap')">Validate JSON</button>
+          </div>
+          <div id="activeColMapError" class="text-danger small mt-1" style="display:none;"></div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Example Map (read-only)</label>
+          <textarea class="form-control font-monospace" rows="6" id="exampleColMap"
+                    readonly>{{ settings.get('excel_import_column_map_custom1_example', '{}') }}</textarea>
+          <div class="form-text">
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="copyExampleToActive()">Copy to Active Map</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group 4: Instance -->
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">
+      <i class="bi bi-gear me-2"></i>Instance
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" name="recycle_bin_enabled"
+                   id="recycleBinEnabled" value="true"
+                   {% if settings.get('recycle_bin_enabled', 'true') == 'true' %}checked{% endif %}>
+            <label class="form-check-label" for="recycleBinEnabled">Recycle Bin Enabled</label>
+          </div>
+          <div class="form-text">When off, deletes are permanent. Existing soft-deleted rows are kept.</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Backup Directory</label>
+          <input type="text" name="backup_directory" class="form-control"
+                 value="{{ settings.get('backup_directory', './backups') }}">
+          <div class="form-text">Used by Phase 11 scheduled backup cron job.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary">
+    <i class="bi bi-floppy me-1"></i>Save Settings
+  </button>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function validateJson(textareaId) {
+  const el = document.getElementById(textareaId);
+  const errEl = document.getElementById(textareaId + 'Error');
+  try {
+    JSON.parse(el.value);
+    errEl.style.display = 'none';
+    el.classList.remove('is-invalid');
+    el.classList.add('is-valid');
+  } catch(e) {
+    errEl.textContent = 'Invalid JSON: ' + e.message;
+    errEl.style.display = 'block';
+    el.classList.remove('is-valid');
+    el.classList.add('is-invalid');
+  }
+}
+
+function copyExampleToActive() {
+  const src = document.getElementById('exampleColMap').value;
+  const dst = document.getElementById('activeColMap');
+  dst.value = src;
+}
+</script>
+{% endblock %}

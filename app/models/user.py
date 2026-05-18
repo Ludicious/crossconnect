@@ -21,5 +21,7 @@ class User(Base):
     )
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    work_orders: Mapped[list] = relationship("WorkOrder", back_populates="creator")
+    work_orders: Mapped[list] = relationship(
+        "WorkOrder", back_populates="creator", foreign_keys="[WorkOrder.created_by]"
+    )
     audit_entries: Mapped[list] = relationship("AuditLog", back_populates="user")

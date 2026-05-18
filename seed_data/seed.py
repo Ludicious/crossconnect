@@ -69,6 +69,16 @@ DEFAULT_SETTINGS = [
         "4",
         "Switch ports within this many positions of each other on the same switch are flagged as too close for redundant connections to the same device.",
     ),
+    (
+        "recycle_bin_enabled",
+        "true",
+        "When false, deletes are immediate hard deletes. Existing soft-deleted rows are retained until manually purged.",
+    ),
+    (
+        "backup_directory",
+        "./backups",
+        "Directory for scheduled backups (Phase 11). Used by install script to configure cron job.",
+    ),
 ]
 
 

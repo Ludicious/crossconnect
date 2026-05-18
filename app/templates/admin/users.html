@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Users — Admin — CrossConnect{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-people me-2"></i>Users</h2>
+  <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#createUserForm">
+    <i class="bi bi-plus-lg me-1"></i>Create User
+  </button>
+</div>
+
+{% if error %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+  <i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if success %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+  <i class="bi bi-check-circle me-2"></i>{{ success }}
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="collapse mb-4" id="createUserForm">
+  <div class="card">
+    <div class="card-header">Create New User</div>
+    <div class="card-body">
+      <form method="post" action="/admin/users/create">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Username</label>
+            <input type="text" name="username" class="form-control" required placeholder="e.g. jsmith">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Display Name</label>
+            <input type="text" name="display_name" class="form-control" required placeholder="e.g. Jane Smith">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Role</label>
+            <select name="role" class="form-select">
+              {% for r in valid_roles %}
+              <option value="{{ r }}" {% if r == 'viewer' %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" required>
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <button type="submit" class="btn btn-success w-100">Create</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Display Name</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Last Login</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr class="{% if not u.is_active %}table-secondary{% endif %}">
+          <td><code>{{ u.username }}</code></td>
+          <td>{{ u.display_name }}</td>
+          <td>
+            <form method="post" action="/admin/users/{{ u.id }}/role" class="d-inline-flex gap-2">
+              <select name="role" class="form-select form-select-sm" style="width:auto;">
+                {% for r in valid_roles %}
+                <option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+            </form>
+          </td>
+          <td>
+            {% if u.is_active %}
+              <span class="badge bg-success">Active</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactive</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.last_login %}
+              <span class="small">{{ u.last_login.strftime("%Y-%m-%d %H:%M") }}</span>
+            {% else %}
+              <span class="text-muted small">Never</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.is_active %}
+            <form method="post" action="/admin/users/{{ u.id }}/deactivate"
+                  onsubmit="return confirm('Deactivate {{ u.username }}?')">
+              <button type="submit" class="btn btn-sm btn-outline-danger">Deactivate</button>
+            </form>
+            {% else %}
+            <span class="text-muted small">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">No users found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

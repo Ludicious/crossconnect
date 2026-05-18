@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — CrossConnect{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-speedometer2 me-2"></i>Admin Dashboard</h2>
+</div>
+
+{% if restored %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+  <i class="bi bi-check-circle me-2"></i>Database restored successfully.
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="row g-4 mb-4">
+  <div class="col-md-3">
+    <div class="card h-100 text-center">
+      <div class="card-body">
+        <i class="bi bi-people fs-2 text-primary mb-2 d-block"></i>
+        <h1 class="display-5 fw-bold">{{ user_count }}</h1>
+        <p class="text-muted mb-0">Total Users</p>
+      </div>
+      <div class="card-footer">
+        <a href="/admin/users" class="btn btn-sm btn-outline-primary">Manage Users</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card h-100 text-center">
+      <div class="card-body">
+        <i class="bi bi-trash3 fs-2 text-warning mb-2 d-block"></i>
+        <h1 class="display-5 fw-bold">{{ total_deleted }}</h1>
+        <p class="text-muted mb-0">Soft-Deleted Items</p>
+        {% if deleted_counts %}
+        <small class="text-muted">
+          {% for type, count in deleted_counts.items() %}
+            {% if count > 0 %}{{ count }} {{ type }}{% if not loop.last %}, {% endif %}{% endif %}
+          {% endfor %}
+        </small>
+        {% endif %}
+      </div>
+      <div class="card-footer">
+        <a href="/admin/recycle-bin" class="btn btn-sm btn-outline-warning">Recycle Bin</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card h-100 text-center">
+      <div class="card-body">
+        <i class="bi bi-cloud-arrow-down fs-2 text-info mb-2 d-block"></i>
+        <p class="fw-semibold mb-1">Last Backup</p>
+        {% if last_backup %}
+          <p class="small text-muted mb-0">{{ last_backup[:19] | replace("T", " ") }} UTC</p>
+        {% else %}
+          <p class="text-danger mb-0">Never</p>
+        {% endif %}
+      </div>
+      <div class="card-footer">
+        <a href="/admin/backup" class="btn btn-sm btn-outline-info">Backup &amp; Restore</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card h-100 text-center">
+      <div class="card-body">
+        <i class="bi bi-recycle fs-2 {% if recycle_bin_enabled %}text-success{% else %}text-danger{% endif %} mb-2 d-block"></i>
+        <p class="fw-semibold mb-1">Recycle Bin</p>
+        <span class="badge {% if recycle_bin_enabled %}bg-success{% else %}bg-danger{% endif %} fs-6">
+          {{ "Enabled" if recycle_bin_enabled else "Disabled" }}
+        </span>
+      </div>
+      <div class="card-footer">
+        <a href="/admin/tuning" class="btn btn-sm btn-outline-secondary">Tuning</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-people me-2"></i>Users</div>
+      <div class="card-body">
+        <p>Manage user accounts, roles, and access.</p>
+        <a href="/admin/users" class="btn btn-primary btn-sm">
+          <i class="bi bi-arrow-right me-1"></i>Go to Users
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-sliders me-2"></i>Tuning</div>
+      <div class="card-body">
+        <p>Configure cable lengths, import maps, audit levels, and instance settings.</p>
+        <a href="/admin/tuning" class="btn btn-primary btn-sm">
+          <i class="bi bi-arrow-right me-1"></i>Go to Tuning
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-trash3 me-2"></i>Recycle Bin</div>
+      <div class="card-body">
+        <p>View, restore, or permanently delete soft-deleted records.</p>
+        <a href="/admin/recycle-bin" class="btn btn-warning btn-sm">
+          <i class="bi bi-arrow-right me-1"></i>Go to Recycle Bin
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-cloud-arrow-down me-2"></i>Backup &amp; Restore</div>
+      <div class="card-body">
+        <p>Download a database backup or restore from a previous backup file.</p>
+        <a href="/admin/backup" class="btn btn-info btn-sm text-white">
+          <i class="bi bi-arrow-right me-1"></i>Go to Backup
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

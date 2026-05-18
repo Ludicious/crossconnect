@@ -10,6 +10,7 @@ from sqlalchemy import func, and_, or_
 from app.models.work_order import WorkOrder, VALID_STATUSES, VALID_WORK_TYPES
 from app.services.cable_length import calculate_and_store
 from app.services.audit import write_audit
+from app.services.settings import get_bool_setting
 from app.models.connection import Connection, INSTALL_STATUSES, ACTIONS, CABLE_TYPES, PURPOSES
 from app.models.user import User
 
@@ -38,7 +39,7 @@ def list_work_orders(db: Session, dc_id: Optional[int] = None,
     q = db.query(WorkOrder).options(
         joinedload(WorkOrder.datacenter),
         joinedload(WorkOrder.creator),
-    )
+    ).filter(WorkOrder.deleted_at.is_(None))
     if dc_id:
         q = q.filter(WorkOrder.datacenter_id == dc_id)
     if status:
@@ -52,7 +53,7 @@ def get_work_order(db: Session, wo_id: int) -> Optional[WorkOrder]:
     return db.query(WorkOrder).options(
         joinedload(WorkOrder.datacenter),
         joinedload(WorkOrder.creator),
-    ).filter(WorkOrder.id == wo_id).first()
+    ).filter(WorkOrder.id == wo_id, WorkOrder.deleted_at.is_(None)).first()
 
 
 def create_work_order(db: Session, name: str, datacenter_id: int,
@@ -127,7 +128,11 @@ def delete_work_order(db: Session, wo: WorkOrder, user_id: Optional[int] = None)
     wo_name, wo_id = wo.name, wo.id
     write_audit(db, user_id, "medium", "work_order", wo_id, "delete",
                 detail=f"Deleted WO '{wo_name}'")
-    db.delete(wo)
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        wo.deleted_at = datetime.utcnow()
+        wo.deleted_by = user_id
+    else:
+        db.delete(wo)
     db.commit()
 
 
@@ -373,8 +378,11 @@ def bulk_create_connections(db: Session, wo_id: int, rows: list[dict],
 
 
 def soft_delete_connection(db: Session, conn: Connection, user_id: int) -> None:
-    conn.deleted_at = datetime.utcnow()
-    conn.deleted_by = user_id
     write_audit(db, user_id, "medium", "connection", conn.id, "delete",
                 detail=f"WO {conn.work_order_id} conn {conn.id}")
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        conn.deleted_at = datetime.utcnow()
+        conn.deleted_by = user_id
+    else:
+        db.delete(conn)
     db.commit()

@@ -47,11 +47,14 @@ class Rack(Base):
     total_ru: Mapped[int] = mapped_column(Integer, default=42)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     datacenter: Mapped["Datacenter"] = relationship("Datacenter", back_populates="racks")
     devices: Mapped[list["Device"]] = relationship("Device", back_populates="rack")
     switches: Mapped[list["Switch"]] = relationship("Switch", back_populates="rack")
     patch_panels: Mapped[list["PatchPanel"]] = relationship("PatchPanel", back_populates="rack")
+    deleter: Mapped[Optional["User"]] = relationship("User", foreign_keys="[Rack.deleted_by]")
 
     __table_args__ = (
         UniqueConstraint("datacenter_id", "name", name="uq_rack_name_per_dc"),
@@ -126,6 +129,8 @@ class Device(Base):
     slot_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     system: Mapped[Optional["System"]] = relationship("System", back_populates="devices")
     rack: Mapped["Rack"] = relationship("Rack", back_populates="devices")
@@ -136,6 +141,7 @@ class Device(Base):
         "Device", remote_side="Device.id", foreign_keys="Device.parent_device_id",
         backref="child_devices"
     )
+    deleter: Mapped[Optional["User"]] = relationship("User", foreign_keys="[Device.deleted_by]")
 
 
 class Switch(Base):
@@ -153,11 +159,14 @@ class Switch(Base):
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     rack: Mapped["Rack"] = relationship("Rack", back_populates="switches")
     device_type: Mapped[Optional["DeviceType"]] = relationship(
         "DeviceType", back_populates="switches"
     )
+    deleter: Mapped[Optional["User"]] = relationship("User", foreign_keys="[Switch.deleted_by]")
 
 
 class PatchPanel(Base):

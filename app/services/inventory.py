@@ -2,12 +2,14 @@
 Inventory service — all DB reads/writes for inventory entities.
 Raises ValueError for business-rule violations (duplicate names, etc.)
 """
+from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 
 from app.models.inventory import Datacenter, DCContact, Rack, System, Device, Switch, PatchPanel
 from app.services.audit import write_audit
+from app.services.settings import get_bool_setting
 
 
 # ── Datacenters ───────────────────────────────────────────────────────────
@@ -100,7 +102,7 @@ def upsert_contacts(db: Session, dc: Datacenter, contacts_data: list[dict]) -> N
 
 def list_racks(db: Session, dc_id: int) -> list[Rack]:
     return (db.query(Rack)
-            .filter(Rack.datacenter_id == dc_id)
+            .filter(Rack.datacenter_id == dc_id, Rack.deleted_at.is_(None))
             .order_by(Rack.name)
             .all())
 
@@ -110,7 +112,7 @@ def get_rack(db: Session, rack_id: int) -> Optional[Rack]:
         joinedload(Rack.devices).joinedload(Device.system),
         joinedload(Rack.switches),
         joinedload(Rack.patch_panels),
-    ).filter(Rack.id == rack_id).first()
+    ).filter(Rack.id == rack_id, Rack.deleted_at.is_(None)).first()
 
 
 def create_rack(db: Session, dc_id: int, name: str, grid_position: str = "",
@@ -149,11 +151,17 @@ def update_rack(db: Session, rack: Rack, user_id: Optional[int] = None, **kwargs
 
 
 def delete_rack(db: Session, rack: Rack, user_id: Optional[int] = None) -> None:
-    if rack.devices or rack.switches or rack.patch_panels:
+    active_devices = [d for d in rack.devices if d.deleted_at is None]
+    active_switches = [s for s in rack.switches if s.deleted_at is None]
+    if active_devices or active_switches or rack.patch_panels:
         raise ValueError("Cannot delete rack that contains devices, switches, or patch panels.")
     write_audit(db, user_id, "wide", "rack", rack.id, "delete",
                 detail=f"{rack.name} dc_id={rack.datacenter_id}")
-    db.delete(rack)
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        rack.deleted_at = datetime.utcnow()
+        rack.deleted_by = user_id
+    else:
+        db.delete(rack)
     db.commit()
 
 
@@ -217,6 +225,7 @@ def delete_system(db: Session, system: System, user_id: Optional[int] = None) ->
 def list_devices(db: Session, rack_id: Optional[int] = None,
                  system_id: Optional[int] = None) -> list[Device]:
     q = db.query(Device).options(joinedload(Device.system), joinedload(Device.rack))
+    q = q.filter(Device.deleted_at.is_(None))
     if rack_id:
         q = q.filter(Device.rack_id == rack_id)
     if system_id:
@@ -264,7 +273,11 @@ def update_device(db: Session, device: Device, user_id: Optional[int] = None,
 def delete_device(db: Session, device: Device, user_id: Optional[int] = None) -> None:
     write_audit(db, user_id, "wide", "device", device.id, "delete",
                 detail=f"{device.name} rack_id={device.rack_id}")
-    db.delete(device)
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        device.deleted_at = datetime.utcnow()
+        device.deleted_by = user_id
+    else:
+        db.delete(device)
     db.commit()
 
 
@@ -272,6 +285,7 @@ def delete_device(db: Session, device: Device, user_id: Optional[int] = None) ->
 
 def list_switches(db: Session, rack_id: Optional[int] = None) -> list[Switch]:
     q = db.query(Switch).options(joinedload(Switch.rack))
+    q = q.filter(Switch.deleted_at.is_(None))
     if rack_id:
         q = q.filter(Switch.rack_id == rack_id)
     return q.order_by(Switch.name).all()
@@ -311,7 +325,11 @@ def update_switch(db: Session, switch: Switch, user_id: Optional[int] = None,
 def delete_switch(db: Session, switch: Switch, user_id: Optional[int] = None) -> None:
     write_audit(db, user_id, "wide", "switch", switch.id, "delete",
                 detail=f"{switch.name} rack_id={switch.rack_id}")
-    db.delete(switch)
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        switch.deleted_at = datetime.utcnow()
+        switch.deleted_by = user_id
+    else:
+        db.delete(switch)
     db.commit()
 
 
@@ -362,7 +380,7 @@ def autocomplete_datacenters(db: Session, q: str, limit: int = 10) -> list[dict]
 
 
 def autocomplete_racks(db: Session, q: str, dc_id: Optional[int] = None, limit: int = 10) -> list[dict]:
-    query = db.query(Rack).filter(Rack.name.ilike(f"%{q}%"))
+    query = db.query(Rack).filter(Rack.name.ilike(f"%{q}%"), Rack.deleted_at.is_(None))
     if dc_id:
         query = query.filter(Rack.datacenter_id == dc_id)
     rows = query.order_by(Rack.name).limit(limit).all()
@@ -375,7 +393,8 @@ def autocomplete_systems(db: Session, q: str, limit: int = 10) -> list[dict]:
 
 
 def autocomplete_devices(db: Session, q: str, rack_id: Optional[int] = None, limit: int = 10) -> list[dict]:
-    query = db.query(Device).options(joinedload(Device.rack)).filter(Device.name.ilike(f"%{q}%"))
+    query = db.query(Device).options(joinedload(Device.rack)).filter(
+        Device.name.ilike(f"%{q}%"), Device.deleted_at.is_(None))
     if rack_id:
         query = query.filter(Device.rack_id == rack_id)
     rows = query.order_by(Device.name).limit(limit).all()
@@ -386,7 +405,8 @@ def autocomplete_devices(db: Session, q: str, rack_id: Optional[int] = None, lim
 
 
 def autocomplete_switches(db: Session, q: str, role: Optional[str] = None, limit: int = 10) -> list[dict]:
-    query = db.query(Switch).options(joinedload(Switch.rack)).filter(Switch.name.ilike(f"%{q}%"))
+    query = db.query(Switch).options(joinedload(Switch.rack)).filter(
+        Switch.name.ilike(f"%{q}%"), Switch.deleted_at.is_(None))
     if role:
         query = query.filter(Switch.switch_role == role)
     rows = query.order_by(Switch.name).limit(limit).all()

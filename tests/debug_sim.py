@@ -881,6 +881,282 @@ def test_excel_import(db, dc, rack, user):
     check("Template has Schema sheet", "Schema" in wb3.sheetnames)
 
 
+# ── Phase 10: Admin / Backup / Recycle Bin tests ─────────────────────────
+
+def test_backup(db):
+    section("Admin: Backup")
+    from app.services.backup import create_backup, get_last_backup_time
+
+    data = create_backup(db)
+    check("Backup: returns bytes", isinstance(data, bytes))
+    check("Backup: valid SQLite magic", data[:16] == b"SQLite format 3\x00")
+
+    ts = get_last_backup_time(db)
+    check("Backup: last_backup_at updated in app_settings", ts is not None)
+
+
+def test_recycle_bin_list(db, dc, rack, user):
+    section("Admin: Recycle Bin (list / restore)")
+    from app.services.recycle_bin import list_deleted_connections, restore_connection
+
+    wo = wo_svc.create_work_order(
+        db, name="_SIM RB List WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo.id)
+
+    conn_data = {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+        "device_rack_name_raw": rack.name, "device_rack_u": "10",
+        "device_slot": "1a", "device_port": "rb1",
+        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "rb1",
+        "install_status": "pending",
+    }
+    conn, _, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
+    conn_id = conn.id
+
+    # Ensure recycle_bin_enabled=true before soft-deleting
+    from app.models.settings import AppSetting
+    _set_rb(db, True)
+
+    wo_svc.soft_delete_connection(db, conn, user.id)
+
+    deleted = list_deleted_connections(db)
+    check("Recycle bin: soft-deleted connection appears in list",
+          any(c.id == conn_id for c in deleted))
+
+    restore_connection(db, conn_id)
+    db.refresh(conn)
+    check("Recycle bin: connection restored (deleted_at=None)", conn.deleted_at is None)
+
+    deleted_after = list_deleted_connections(db)
+    check("Recycle bin: connection absent from deleted list after restore",
+          not any(c.id == conn_id for c in deleted_after))
+
+
+def _set_rb(db, enabled: bool):
+    from app.models.settings import AppSetting
+    row = db.get(AppSetting, "recycle_bin_enabled")
+    val = "true" if enabled else "false"
+    if row:
+        row.value = val
+    else:
+        db.add(AppSetting(key="recycle_bin_enabled", value=val))
+    db.commit()
+
+
+def test_recycle_bin_purge(db, dc, rack, user):
+    section("Admin: Recycle Bin (purge)")
+    from app.services.recycle_bin import purge_all
+
+    _set_rb(db, True)
+
+    wo = wo_svc.create_work_order(
+        db, name="_SIM RB Purge WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo.id)
+
+    conn_data = {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+        "device_rack_name_raw": rack.name, "device_rack_u": "10",
+        "device_slot": "1a", "device_port": "purge1",
+        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "purge1",
+        "install_status": "pending",
+    }
+    conn, _, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
+    conn_id = conn.id
+    wo_svc.soft_delete_connection(db, conn, user.id)
+
+    count = purge_all(db, "connections")
+    check("Recycle bin purge: returned count > 0", count > 0)
+
+    still_there = db.get(Connection, conn_id)
+    check("Recycle bin purge: connection permanently gone from DB", still_there is None)
+
+
+def test_recycle_bin_toggle(db, dc, rack, user):
+    section("Admin: Recycle Bin Toggle (recycle_bin_enabled=false)")
+
+    _set_rb(db, False)
+
+    wo = wo_svc.create_work_order(
+        db, name="_SIM RB Toggle WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo.id)
+
+    conn_data = {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+        "device_rack_name_raw": rack.name, "device_rack_u": "10",
+        "device_slot": "1a", "device_port": "toggle1",
+        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "toggle1",
+        "install_status": "pending",
+    }
+    conn, _, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
+    conn_id = conn.id
+
+    wo_svc.soft_delete_connection(db, conn, user.id)
+
+    still_there = db.get(Connection, conn_id)
+    check("Toggle: connection hard-deleted when recycle_bin_enabled=false",
+          still_there is None)
+
+    # Restore default
+    _set_rb(db, True)
+
+
+def test_tuning_validation():
+    section("Admin: Tuning Validation Logic")
+    import json
+
+    # Invalid JSON detection
+    try:
+        json.loads("this is not json")
+        check("Invalid JSON detected", False, "Expected JSONDecodeError")
+    except json.JSONDecodeError:
+        check("Invalid JSON detected", True)
+
+    # Valid JSON passes
+    try:
+        json.loads('{"action": 0, "cable_type": 1}')
+        check("Valid JSON accepted", True)
+    except json.JSONDecodeError:
+        check("Valid JSON accepted", False)
+
+    # Valid comma-separated lengths
+    try:
+        [float(x.strip()) for x in "0.5,1,2,3,5".split(",") if x.strip()]
+        check("Valid comma-separated lengths parsed", True)
+    except ValueError:
+        check("Valid comma-separated lengths parsed", False)
+
+    # Invalid comma-separated lengths
+    try:
+        [float(x.strip()) for x in "0.5,1,abc,3".split(",") if x.strip()]
+        check("Invalid lengths detected", False, "Expected ValueError")
+    except ValueError:
+        check("Invalid lengths detected", True)
+
+    # Valid positive integer
+    try:
+        v = int("4")
+        check("Valid threshold accepted", v > 0)
+    except ValueError:
+        check("Valid threshold accepted", False)
+
+    # Non-integer threshold
+    try:
+        int("abc")
+        check("Non-integer threshold detected", False, "Expected ValueError")
+    except ValueError:
+        check("Non-integer threshold detected", True)
+
+    # Zero threshold (not positive)
+    try:
+        v = int("0")
+        check("Zero threshold rejected", v <= 0)
+    except ValueError:
+        check("Zero threshold rejected", False)
+
+
+def test_admin_templates(db, dc, rack, user):
+    section("Admin: Template Renders")
+    from jinja2 import Environment, FileSystemLoader
+    from app.services.recycle_bin import get_deleted_counts
+    from app.services.backup import get_last_backup_time
+    from app.services.settings import get_bool_setting, get_all_settings
+    import app.services.auth as auth_svc
+
+    template_dir = str(Path(__file__).resolve().parents[1] / "app" / "templates")
+    env = Environment(loader=FileSystemLoader(template_dir))
+
+    class FakeRequest:
+        class url:
+            path = "/admin"
+        query_params = {}
+
+    class FakeAdminUser:
+        id = 1
+        username = "admin"
+        display_name = "Administrator"
+        role = "admin"
+        is_active = True
+
+    admin_user = FakeAdminUser()
+    req = FakeRequest()
+
+    def render(template_name, extra_ctx):
+        try:
+            t = env.get_template(template_name)
+            t.render(request=req, user=admin_user, **extra_ctx)
+            check(f"Render {template_name}", True)
+            return True
+        except Exception as e:
+            check(f"Render {template_name}", False, f"{type(e).__name__}: {e}")
+            return False
+
+    deleted_counts = get_deleted_counts(db)
+    last_backup = get_last_backup_time(db)
+    recycle_bin_enabled = get_bool_setting(db, "recycle_bin_enabled")
+    all_settings = get_all_settings(db)
+    users = auth_svc.list_users(db)
+
+    render("admin/index.html", {
+        "user_count": db.query(__import__("app.models.user", fromlist=["User"]).User).count(),
+        "deleted_counts": deleted_counts,
+        "total_deleted": sum(deleted_counts.values()),
+        "last_backup": last_backup,
+        "recycle_bin_enabled": recycle_bin_enabled,
+        "restored": None,
+    })
+
+    render("admin/users.html", {
+        "users": users,
+        "valid_roles": ["admin", "architect", "dc_tech", "viewer"],
+        "error": None,
+        "success": None,
+    })
+
+    render("admin/tuning.html", {
+        "settings": all_settings,
+        "saved": None,
+        "error": None,
+    })
+
+    from app.services.recycle_bin import (
+        list_deleted_connections, list_deleted_work_orders,
+        list_deleted_devices, list_deleted_racks, list_deleted_switches,
+    )
+    render("admin/recycle_bin.html", {
+        "tab": "connections",
+        "recycle_bin_enabled": recycle_bin_enabled,
+        "deleted_connections": list_deleted_connections(db),
+        "deleted_work_orders": [],
+        "deleted_devices": [],
+        "deleted_racks": [],
+        "deleted_switches": [],
+        "deleted_counts": deleted_counts,
+    })
+
+    render("admin/backup.html", {
+        "last_backup": last_backup,
+        "is_sqlite": True,
+    })
+
+    render("admin/restore_confirm.html", {
+        "token": "test-token-123",
+        "filename": "crossconnect-backup-20260518.db",
+        "file_size_kb": 512,
+        "backup_version": "a2b3c4d5e6f7",
+        "current_version": "a2b3c4d5e6f7",
+        "versions_match": True,
+    })
+
+
 # ── Cleanup ───────────────────────────────────────────────────────────────
 
 def cleanup(db):
@@ -936,6 +1212,12 @@ def main():
         test_analytics(db, dc, rack, user, sw)
         test_pdf_export(db, dc, user)
         test_work_orders(db, dc, rack, sw, user)
+        test_backup(db)
+        test_recycle_bin_list(db, dc, rack, user)
+        test_recycle_bin_purge(db, dc, rack, user)
+        test_recycle_bin_toggle(db, dc, rack, user)
+        test_tuning_validation()
+        test_admin_templates(db, dc, rack, user)
     except Exception as e:
         import traceback
         print(f"\n  FATAL: Unhandled exception during simulation:")

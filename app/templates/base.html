@@ -76,10 +76,38 @@
         </li>
         {% endif %}
         {% if user.role == 'admin' %}
-        <li class="nav-item">
-          <a class="nav-link {% if '/admin' in request.url.path %}active{% endif %}" href="/admin">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle {% if '/admin' in request.url.path %}active{% endif %}"
+             href="#" role="button" data-bs-toggle="dropdown">
             <i class="bi bi-gear me-1"></i>Admin
           </a>
+          <ul class="dropdown-menu">
+            <li>
+              <a class="dropdown-item" href="/admin/">
+                <i class="bi bi-speedometer2 me-2"></i>Admin Dashboard
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="/admin/users">
+                <i class="bi bi-people me-2"></i>Users
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="/admin/tuning">
+                <i class="bi bi-sliders me-2"></i>Tuning
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="/admin/recycle-bin">
+                <i class="bi bi-trash3 me-2"></i>Recycle Bin
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item" href="/admin/backup">
+                <i class="bi bi-cloud-arrow-down me-2"></i>Backup &amp; Restore
+              </a>
+            </li>
+          </ul>
         </li>
         {% endif %}
       </ul>

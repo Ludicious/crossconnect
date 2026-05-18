@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}Recycle Bin — Admin — CrossConnect{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-trash3 me-2"></i>Recycle Bin</h2>
+</div>
+
+{% if not recycle_bin_enabled %}
+<div class="alert alert-warning" role="alert">
+  <i class="bi bi-exclamation-triangle me-2"></i>
+  <strong>Recycle bin is disabled.</strong> New deletes are permanent (hard deletes).
+  Any items shown below are existing soft-deleted rows that have not yet been purged.
+  <a href="/admin/tuning" class="alert-link">Enable in Tuning</a>.
+</div>
+{% endif %}
+
+<!-- Tab navigation -->
+<ul class="nav nav-tabs mb-3">
+  {% set tabs = [
+    ('connections', 'bi-plug', 'Connections'),
+    ('work_orders', 'bi-clipboard-check', 'Work Orders'),
+    ('devices', 'bi-server', 'Devices'),
+    ('racks', 'bi-hdd-rack', 'Racks'),
+    ('switches', 'bi-diagram-2', 'Switches'),
+  ] %}
+  {% for tab_id, icon, label in tabs %}
+  <li class="nav-item">
+    <a class="nav-link {% if tab == tab_id %}active{% endif %}"
+       href="/admin/recycle-bin?tab={{ tab_id }}">
+      <i class="bi {{ icon }} me-1"></i>{{ label }}
+      {% set count = deleted_counts.get(tab_id, 0) %}
+      {% if count > 0 %}
+        <span class="badge bg-danger ms-1">{{ count }}</span>
+      {% endif %}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+<!-- Tab content -->
+
+{% if tab == 'connections' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Deleted Connections ({{ deleted_connections | length }})</h5>
+  {% if deleted_connections %}
+  <form method="post" action="/admin/recycle-bin/purge/connections"
+        onsubmit="return confirm('Permanently delete ALL {{ deleted_connections | length }} deleted connections? This cannot be undone.')">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <i class="bi bi-trash me-1"></i>Purge All ({{ deleted_connections | length }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% if deleted_connections %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr>
+      <th>ID</th><th>WO</th><th>Device Rack / Port</th><th>Switch Rack / Port</th>
+      <th>Deleted At</th><th>Deleted By</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for c in deleted_connections %}
+    <tr>
+      <td>{{ c.id }}</td>
+      <td>{{ c.work_order_id }}</td>
+      <td>{{ c.device_rack_name_raw or '—' }} / {{ c.device_port or '—' }}</td>
+      <td>{{ c.switch_rack_name_raw or '—' }} / {{ c.switch_port or '—' }}</td>
+      <td class="small">{{ c.deleted_at.strftime("%Y-%m-%d %H:%M") if c.deleted_at else '—' }}</td>
+      <td class="small">{{ c.deleted_by or '—' }}</td>
+      <td class="d-flex gap-1">
+        <form method="post" action="/admin/recycle-bin/restore/connections/{{ c.id }}">
+          <button type="submit" class="btn btn-xs btn-success btn-sm">Restore</button>
+        </form>
+        <form method="post" action="/admin/recycle-bin/delete/connections/{{ c.id }}"
+              onsubmit="return confirm('Permanently delete connection {{ c.id }}?')">
+          <button type="submit" class="btn btn-xs btn-danger btn-sm">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted connections.
+</div>
+{% endif %}
+
+{% elif tab == 'work_orders' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Deleted Work Orders ({{ deleted_work_orders | length }})</h5>
+  {% if deleted_work_orders %}
+  <form method="post" action="/admin/recycle-bin/purge/work_orders"
+        onsubmit="return confirm('Permanently delete ALL {{ deleted_work_orders | length }} deleted work orders?')">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <i class="bi bi-trash me-1"></i>Purge All ({{ deleted_work_orders | length }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% if deleted_work_orders %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr>
+      <th>ID</th><th>Name</th><th>DC</th><th>Status</th>
+      <th>Deleted At</th><th>Deleted By</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for wo in deleted_work_orders %}
+    <tr>
+      <td>{{ wo.id }}</td>
+      <td>{{ wo.name }}</td>
+      <td>{{ wo.datacenter.code if wo.datacenter else '—' }}</td>
+      <td><span class="badge bg-secondary">{{ wo.status }}</span></td>
+      <td class="small">{{ wo.deleted_at.strftime("%Y-%m-%d %H:%M") if wo.deleted_at else '—' }}</td>
+      <td class="small">{{ wo.deleter.display_name if wo.deleter else (wo.deleted_by or '—') }}</td>
+      <td class="d-flex gap-1">
+        <form method="post" action="/admin/recycle-bin/restore/work_orders/{{ wo.id }}">
+          <button type="submit" class="btn btn-sm btn-success">Restore</button>
+        </form>
+        <form method="post" action="/admin/recycle-bin/delete/work_orders/{{ wo.id }}"
+              onsubmit="return confirm('Permanently delete work order {{ wo.id }}?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted work orders.
+</div>
+{% endif %}
+
+{% elif tab == 'devices' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Deleted Devices ({{ deleted_devices | length }})</h5>
+  {% if deleted_devices %}
+  <form method="post" action="/admin/recycle-bin/purge/devices"
+        onsubmit="return confirm('Permanently delete ALL {{ deleted_devices | length }} deleted devices?')">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <i class="bi bi-trash me-1"></i>Purge All ({{ deleted_devices | length }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% if deleted_devices %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr>
+      <th>ID</th><th>Name</th><th>Rack</th><th>RU</th>
+      <th>Deleted At</th><th>Deleted By</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for d in deleted_devices %}
+    <tr>
+      <td>{{ d.id }}</td>
+      <td>{{ d.name }}</td>
+      <td>{{ d.rack.name if d.rack else '—' }}</td>
+      <td>{{ d.starting_ru or '—' }}</td>
+      <td class="small">{{ d.deleted_at.strftime("%Y-%m-%d %H:%M") if d.deleted_at else '—' }}</td>
+      <td class="small">{{ d.deleter.display_name if d.deleter else (d.deleted_by or '—') }}</td>
+      <td class="d-flex gap-1">
+        <form method="post" action="/admin/recycle-bin/restore/devices/{{ d.id }}">
+          <button type="submit" class="btn btn-sm btn-success">Restore</button>
+        </form>
+        <form method="post" action="/admin/recycle-bin/delete/devices/{{ d.id }}"
+              onsubmit="return confirm('Permanently delete device {{ d.id }}?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted devices.
+</div>
+{% endif %}
+
+{% elif tab == 'racks' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Deleted Racks ({{ deleted_racks | length }})</h5>
+  {% if deleted_racks %}
+  <form method="post" action="/admin/recycle-bin/purge/racks"
+        onsubmit="return confirm('Permanently delete ALL {{ deleted_racks | length }} deleted racks?')">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <i class="bi bi-trash me-1"></i>Purge All ({{ deleted_racks | length }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% if deleted_racks %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr>
+      <th>ID</th><th>Name</th><th>Datacenter</th>
+      <th>Deleted At</th><th>Deleted By</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for r in deleted_racks %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.name }}</td>
+      <td>{{ r.datacenter.code if r.datacenter else '—' }}</td>
+      <td class="small">{{ r.deleted_at.strftime("%Y-%m-%d %H:%M") if r.deleted_at else '—' }}</td>
+      <td class="small">{{ r.deleter.display_name if r.deleter else (r.deleted_by or '—') }}</td>
+      <td class="d-flex gap-1">
+        <form method="post" action="/admin/recycle-bin/restore/racks/{{ r.id }}">
+          <button type="submit" class="btn btn-sm btn-success">Restore</button>
+        </form>
+        <form method="post" action="/admin/recycle-bin/delete/racks/{{ r.id }}"
+              onsubmit="return confirm('Permanently delete rack {{ r.id }}?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted racks.
+</div>
+{% endif %}
+
+{% elif tab == 'switches' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Deleted Switches ({{ deleted_switches | length }})</h5>
+  {% if deleted_switches %}
+  <form method="post" action="/admin/recycle-bin/purge/switches"
+        onsubmit="return confirm('Permanently delete ALL {{ deleted_switches | length }} deleted switches?')">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <i class="bi bi-trash me-1"></i>Purge All ({{ deleted_switches | length }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% if deleted_switches %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr>
+      <th>ID</th><th>Name</th><th>Role</th><th>Rack</th>
+      <th>Deleted At</th><th>Deleted By</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for s in deleted_switches %}
+    <tr>
+      <td>{{ s.id }}</td>
+      <td>{{ s.name }}</td>
+      <td><span class="badge bg-secondary">{{ s.switch_role }}</span></td>
+      <td>{{ s.rack.name if s.rack else '—' }}</td>
+      <td class="small">{{ s.deleted_at.strftime("%Y-%m-%d %H:%M") if s.deleted_at else '—' }}</td>
+      <td class="small">{{ s.deleter.display_name if s.deleter else (s.deleted_by or '—') }}</td>
+      <td class="d-flex gap-1">
+        <form method="post" action="/admin/recycle-bin/restore/switches/{{ s.id }}">
+          <button type="submit" class="btn btn-sm btn-success">Restore</button>
+        </form>
+        <form method="post" action="/admin/recycle-bin/delete/switches/{{ s.id }}"
+              onsubmit="return confirm('Permanently delete switch {{ s.id }}?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted switches.
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
