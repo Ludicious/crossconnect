@@ -20,10 +20,50 @@ from app.models.user import User
 from app.models.settings import AppSetting
 from app.services.auth import create_user, generate_temp_password, get_user_by_username
 
+_CANONICAL_MAP = {
+    "action": 0, "fabric": 1, "port_description": 2, "cable_type": 3, "purpose": 4,
+    "system_name_raw": 5, "device_name_raw": 6, "device_serial": 7,
+    "device_rack_name_raw": 8, "device_grid": 9, "device_rack_u": 10, "device_slot": 11, "device_port": 12,
+    "device_patch_rack_name_raw": 13, "device_patch_ru": 14, "device_patch_side": 15,
+    "device_patch_module": 16, "device_patch_port": 17,
+    "switch_patch_rack_name_raw": 18, "switch_patch_ru": 19, "switch_patch_side": 20,
+    "switch_patch_module": 21, "switch_patch_port": 22,
+    "switch_name_raw": 23, "switch_serial": 24, "switch_rack_name_raw": 25,
+    "switch_grid": 26, "switch_rack_u": 27, "switch_slot": 28, "switch_port": 29,
+    "vlan_vsan": 30, "lag_id": 31, "fiber_mode": 32, "comments": 33,
+}
+
+_HONDA_MAP = {
+    "action": 0, "fabric": 1, "cable_type": 2, "purpose": 3,
+    "device_name_raw": 4, "device_rack_name_raw": 5, "device_rack_u": 6,
+    "device_slot": 7, "device_port": 8,
+    "switch_name_raw": 9, "switch_rack_name_raw": 10, "switch_rack_u": 11,
+    "switch_slot": 12, "switch_port": 13,
+    "vlan_vsan": 14, "lag_id": 15, "fiber_mode": 16, "comments": 17,
+}
+
+import json as _json
+
 DEFAULT_SETTINGS = [
     ("cable_slack_inches_per_end", "18", "Inches of slack added per cable end for length calculation"),
     ("cable_standard_lengths_m", "0.5,1,2,3,5,7,10", "Comma-separated standard cable lengths in metres"),
     ("max_rack_ru", "54", "Maximum valid RU value (1..max_rack_ru)"),
+    ("audit_level", "medium", "Audit logging level: none | work_orders | medium | wide"),
+    (
+        "excel_import_column_map",
+        _json.dumps(_CANONICAL_MAP),
+        "JSON mapping CrossConnect field names to 0-based column indices for Excel import (canonical 34-col layout)",
+    ),
+    (
+        "excel_import_skip_sheets",
+        "Schema",
+        "Comma-separated sheet name(s) to ignore during Excel import",
+    ),
+    (
+        "excel_import_column_map_custom1_example",
+        _json.dumps(_HONDA_MAP),
+        "Example alternate column map for Honda/legacy 18-col layout (reference only — copy key and edit value to activate)",
+    ),
 ]
 
 

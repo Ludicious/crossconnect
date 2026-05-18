@@ -134,6 +134,16 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
       <i class="bi bi-upload me-1"></i>Import CSV/TSV
     </button>
 
+    <!-- Import Excel -->
+    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#importExcelModal">
+      <i class="bi bi-file-earmark-spreadsheet me-1"></i>Import Excel
+    </button>
+
+    <!-- Download Template -->
+    <a class="btn btn-outline-secondary btn-sm" href="/work-orders/import-template">
+      <i class="bi bi-download me-1"></i>Download Template
+    </a>
+
     <!-- Save all dirty rows -->
     <button class="btn cc-btn-primary btn-sm" id="save-btn" onclick="saveAllDirty()" disabled>
       <i class="bi bi-floppy me-1"></i>Save Changes
@@ -288,9 +298,75 @@ tr.row-dirty td:first-child { position: relative; padding-left: 14px; }
 </div>
 <!-- Alpine data for the importer lives in app.js (csvImporter component) -->
 
+<!-- Import Excel Modal -->
+<div class="modal fade" id="importExcelModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background:var(--cc-navy-light);border-color:var(--cc-navy-border)">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Import Rows from Excel</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Upload a <code>.xlsx</code> file using the
+          <a href="/work-orders/import-template" class="text-info">canonical template</a>.
+          Column positions are read from the <em>excel_import_column_map</em> setting.
+          Rows with a blank ACTION column are skipped.
+        </p>
+        <div id="excel-upload-area">
+          <label class="form-label small fw-semibold">Select .xlsx file</label>
+          <input type="file" class="form-control" id="excelFileInput" accept=".xlsx">
+        </div>
+        <div id="excel-import-result" class="alert small py-2 mt-3 d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn cc-btn-primary btn-sm" id="excel-import-btn" onclick="submitExcelImport()">
+          <i class="bi bi-upload me-1"></i>Import
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
+<script>
+async function submitExcelImport() {
+  const input = document.getElementById('excelFileInput');
+  const resultDiv = document.getElementById('excel-import-result');
+  const btn = document.getElementById('excel-import-btn');
+  if (!input.files.length) {
+    resultDiv.className = 'alert alert-warning small py-2 mt-3';
+    resultDiv.textContent = 'Please select a file first.';
+    return;
+  }
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing…';
+  try {
+    const resp = await fetch(`/work-orders/${WO_ID}/connections/import-excel`, {method:'POST', body: fd});
+    const data = await resp.json();
+    if (resp.ok) {
+      resultDiv.className = 'alert alert-success small py-2 mt-3';
+      resultDiv.textContent = data.message || `Imported ${data.created} row(s).`;
+      if (data.created > 0) setTimeout(() => location.reload(), 1200);
+    } else {
+      resultDiv.className = 'alert alert-danger small py-2 mt-3';
+      resultDiv.textContent = data.detail || 'Import failed.';
+    }
+  } catch (e) {
+    resultDiv.className = 'alert alert-danger small py-2 mt-3';
+    resultDiv.textContent = 'Network error during import.';
+  } finally {
+    resultDiv.classList.remove('d-none');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-upload me-1"></i>Import';
+  }
+}
+</script>
 <script>
 const WO_ID = {{ wo.id }};
 const CAN_EDIT = {{ 'true' if user.role in ['architect','admin'] and wo.status in ['draft','issued'] else 'false' }};

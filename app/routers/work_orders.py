@@ -2,8 +2,8 @@ from datetime import date
 from typing import Optional
 import json
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,10 @@ from app.db import get_db
 from app.routers.auth import get_current_user, require_roles
 import app.services.work_orders as svc
 import app.services.inventory as inv_svc
+from app.services.excel_import import parse_crossconnect_excel, generate_template
+from app.services.audit import write_audit
 from app.models.work_order import VALID_WORK_TYPES
+from app.models.settings import AppSetting
 
 router = APIRouter(prefix="/work-orders", tags=["work_orders"])
 templates = Jinja2Templates(directory="app/templates")
@@ -134,7 +137,7 @@ async def wo_update(
     if not wo:
         raise HTTPException(404)
     td = date.fromisoformat(target_date) if target_date else None
-    svc.update_work_order(db, wo, name=name, datacenter_id=datacenter_id,
+    svc.update_work_order(db, wo, user_id=user.id, name=name, datacenter_id=datacenter_id,
                            work_type=work_type, target_date=td, notes=notes)
     return RedirectResponse(f"/work-orders/{wo_id}", status_code=302)
 
@@ -174,7 +177,7 @@ async def wo_delete(wo_id: int, request: Request, db: Session = Depends(get_db),
     if not wo:
         raise HTTPException(404)
     try:
-        svc.delete_work_order(db, wo)
+        svc.delete_work_order(db, wo, user_id=user.id)
         return RedirectResponse("/work-orders", status_code=302)
     except ValueError as e:
         connections = svc.list_connections(db, wo_id)
@@ -221,6 +224,65 @@ async def conn_bulk(
     body = await request.json()
     rows = body.get("rows", [])
     result = svc.bulk_create_connections(db, wo_id, rows, user.id)
+    return JSONResponse(result)
+
+
+@router.get("/import-template")
+async def import_template(
+    request: Request,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _arch_or_admin(request, db)
+    xlsx_bytes = generate_template()
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="crossconnect_template.xlsx"'},
+    )
+
+
+@router.post("/{wo_id}/connections/import-excel")
+async def conn_import_excel(
+    wo_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _arch_or_admin(request, db)
+    wo = svc.get_work_order(db, wo_id)
+    if not wo or wo.status not in ("draft", "issued"):
+        raise HTTPException(400, "Work order is not editable")
+
+    col_map_setting = db.get(AppSetting, "excel_import_column_map")
+    skip_setting = db.get(AppSetting, "excel_import_skip_sheets")
+
+    try:
+        column_map = json.loads(col_map_setting.value) if col_map_setting else {}
+    except (ValueError, AttributeError):
+        column_map = {}
+
+    skip_sheets = [s.strip() for s in (skip_setting.value if skip_setting else "Schema").split(",") if s.strip()]
+
+    file_bytes = await file.read()
+    try:
+        rows = parse_crossconnect_excel(file_bytes, column_map, skip_sheets)
+    except Exception as e:
+        raise HTTPException(400, f"Could not parse Excel file: {e}")
+
+    if not rows:
+        return JSONResponse({"ok": True, "created": 0, "skipped": [], "message": "No data rows found in file."})
+
+    clean_rows = [{k: (v if v is not None else "") for k, v in row.items()} for row in rows]
+    result = svc.bulk_create_connections(db, wo_id, clean_rows, user.id)
+
+    write_audit(
+        db, user.id, "medium", "connection", None, "bulk_import",
+        detail=f"WO {wo_id} Excel import: {result.get('created', 0)} created, {len(result.get('skipped', []))} skipped",
+    )
+    db.commit()
+
     return JSONResponse(result)
 
 

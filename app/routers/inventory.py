@@ -51,7 +51,7 @@ async def dc_create(
     _arch_or_admin(request, db)
     try:
         dc = svc.create_datacenter(db, name=name, code=code, address=address,
-                                    has_grid_system=has_grid_system, notes=notes)
+                                    has_grid_system=has_grid_system, notes=notes, user_id=user.id)
         return RedirectResponse(f"/inventory/datacenters/{dc.id}", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/dc_form.html",
@@ -89,7 +89,7 @@ async def dc_update(
     if not dc:
         raise HTTPException(404)
     try:
-        svc.update_datacenter(db, dc, name=name, code=code, address=address,
+        svc.update_datacenter(db, dc, user_id=user.id, name=name, code=code, address=address,
                                has_grid_system=has_grid_system, notes=notes)
         return RedirectResponse(f"/inventory/datacenters/{dc_id}", status_code=302)
     except ValueError as e:
@@ -129,7 +129,7 @@ async def dc_delete(dc_id: int, request: Request, db: Session = Depends(get_db),
     if not dc:
         raise HTTPException(404)
     try:
-        svc.delete_datacenter(db, dc)
+        svc.delete_datacenter(db, dc, user_id=user.id)
         return RedirectResponse("/inventory", status_code=302)
     except ValueError as e:
         racks = svc.list_racks(db, dc_id)
@@ -161,7 +161,7 @@ async def rack_create(
         raise HTTPException(404)
     try:
         rack = svc.create_rack(db, dc_id=dc_id, name=name, grid_position=grid_position,
-                                total_ru=total_ru, notes=notes)
+                                total_ru=total_ru, notes=notes, user_id=user.id)
         return RedirectResponse(f"/inventory/racks/{rack.id}", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/rack_form.html",
@@ -198,7 +198,7 @@ async def rack_update(
     if not rack:
         raise HTTPException(404)
     try:
-        svc.update_rack(db, rack, name=name, grid_position=grid_position, total_ru=total_ru, notes=notes)
+        svc.update_rack(db, rack, user_id=user.id, name=name, grid_position=grid_position, total_ru=total_ru, notes=notes)
         return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/rack_form.html",
@@ -213,7 +213,7 @@ async def rack_delete(rack_id: int, request: Request, db: Session = Depends(get_
         raise HTTPException(404)
     dc_id = rack.datacenter_id
     try:
-        svc.delete_rack(db, rack)
+        svc.delete_rack(db, rack, user_id=user.id)
         return RedirectResponse(f"/inventory/datacenters/{dc_id}", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/rack_detail.html",
@@ -253,7 +253,7 @@ async def device_create(
                           serial=serial, starting_ru=starting_ru,
                           device_type_id=device_type_id or None,
                           parent_device_id=parent_device_id or None,
-                          slot_number=slot_number, notes=notes)
+                          slot_number=slot_number, notes=notes, user_id=user.id)
         return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
     except ValueError as e:
         systems = svc.list_systems(db)
@@ -287,8 +287,9 @@ async def device_update(
     device = svc.get_device(db, device_id)
     if not device:
         raise HTTPException(404)
-    svc.update_device(db, device, name=name, serial=serial, system_id=system_id or None,
-                      starting_ru=starting_ru, device_type_id=device_type_id or None,
+    svc.update_device(db, device, user_id=user.id, name=name, serial=serial,
+                      system_id=system_id or None, starting_ru=starting_ru,
+                      device_type_id=device_type_id or None,
                       parent_device_id=parent_device_id or None,
                       slot_number=slot_number, notes=notes)
     return RedirectResponse(f"/inventory/racks/{device.rack_id}", status_code=302)
@@ -301,7 +302,7 @@ async def device_delete(device_id: int, request: Request, db: Session = Depends(
     if not device:
         raise HTTPException(404)
     rack_id = device.rack_id
-    svc.delete_device(db, device)
+    svc.delete_device(db, device, user_id=user.id)
     return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
 
 
@@ -332,7 +333,7 @@ async def switch_create(
         raise HTTPException(404)
     svc.create_switch(db, rack_id=rack_id, name=name, switch_role=switch_role,
                       serial=serial, starting_ru=starting_ru,
-                      switch_type_id=switch_type_id or None, notes=notes)
+                      switch_type_id=switch_type_id or None, notes=notes, user_id=user.id)
     return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
 
 
@@ -359,7 +360,7 @@ async def switch_update(
     sw = svc.get_switch(db, switch_id)
     if not sw:
         raise HTTPException(404)
-    svc.update_switch(db, sw, name=name, serial=serial, switch_role=switch_role,
+    svc.update_switch(db, sw, user_id=user.id, name=name, serial=serial, switch_role=switch_role,
                       starting_ru=starting_ru, switch_type_id=switch_type_id or None, notes=notes)
     return RedirectResponse(f"/inventory/racks/{sw.rack_id}", status_code=302)
 
@@ -371,7 +372,7 @@ async def switch_delete(switch_id: int, request: Request, db: Session = Depends(
     if not sw:
         raise HTTPException(404)
     rack_id = sw.rack_id
-    svc.delete_switch(db, sw)
+    svc.delete_switch(db, sw, user_id=user.id)
     return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
 
 
@@ -384,7 +385,8 @@ async def pp_create(
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     _arch_or_admin(request, db)
-    svc.create_patch_panel(db, rack_id=rack_id, name=name, starting_ru=starting_ru, notes=notes)
+    svc.create_patch_panel(db, rack_id=rack_id, name=name, starting_ru=starting_ru,
+                           notes=notes, user_id=user.id)
     return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
 
 
@@ -399,7 +401,7 @@ async def pp_update(
     pp = db.get(PatchPanel, pp_id)
     if not pp:
         raise HTTPException(404)
-    svc.update_patch_panel(db, pp, name=name, starting_ru=starting_ru, notes=notes)
+    svc.update_patch_panel(db, pp, user_id=user.id, name=name, starting_ru=starting_ru, notes=notes)
     return RedirectResponse(f"/inventory/racks/{pp.rack_id}", status_code=302)
 
 
@@ -411,7 +413,7 @@ async def pp_delete(pp_id: int, request: Request, db: Session = Depends(get_db),
     if not pp:
         raise HTTPException(404)
     rack_id = pp.rack_id
-    svc.delete_patch_panel(db, pp)
+    svc.delete_patch_panel(db, pp, user_id=user.id)
     return RedirectResponse(f"/inventory/racks/{rack_id}", status_code=302)
 
 
@@ -432,7 +434,7 @@ async def system_create(
 ):
     _arch_or_admin(request, db)
     try:
-        s = svc.create_system(db, name=name, system_type=system_type, notes=notes)
+        s = svc.create_system(db, name=name, system_type=system_type, notes=notes, user_id=user.id)
         return RedirectResponse(f"/inventory/systems/{s.id}", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/system_form.html",
@@ -468,7 +470,7 @@ async def system_update(
     if not system:
         raise HTTPException(404)
     try:
-        svc.update_system(db, system, name=name, system_type=system_type, notes=notes)
+        svc.update_system(db, system, user_id=user.id, name=name, system_type=system_type, notes=notes)
         return RedirectResponse(f"/inventory/systems/{system_id}", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/system_form.html",
@@ -482,7 +484,7 @@ async def system_delete(system_id: int, request: Request, db: Session = Depends(
     if not system:
         raise HTTPException(404)
     try:
-        svc.delete_system(db, system)
+        svc.delete_system(db, system, user_id=user.id)
         return RedirectResponse("/inventory", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/system_detail.html",
@@ -547,7 +549,7 @@ async def dt_create(
     try:
         dt = svc.create_device_type(db, manufacturer=manufacturer, model=model,
                                      category=category, rack_u=rack_u,
-                                     slot_count=slot_count, notes=notes)
+                                     slot_count=slot_count, notes=notes, user_id=user.id)
         return RedirectResponse(f"/inventory/device-types", status_code=302)
     except ValueError as e:
         return _tpl(request, "inventory/device_type_form.html",
@@ -577,7 +579,7 @@ async def dt_update(
     if not dt:
         raise HTTPException(404)
     try:
-        svc.update_device_type(db, dt, manufacturer=manufacturer, model=model,
+        svc.update_device_type(db, dt, user_id=user.id, manufacturer=manufacturer, model=model,
                                 category=category, rack_u=rack_u,
                                 slot_count=slot_count, notes=notes)
         return RedirectResponse("/inventory/device-types", status_code=302)
@@ -593,7 +595,7 @@ async def dt_delete(dt_id: int, request: Request, db: Session = Depends(get_db),
     if not dt:
         raise HTTPException(404)
     try:
-        svc.delete_device_type(db, dt)
+        svc.delete_device_type(db, dt, user_id=user.id)
         return RedirectResponse("/inventory/device-types", status_code=302)
     except ValueError as e:
         dts = svc.list_device_types(db)

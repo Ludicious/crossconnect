@@ -9,6 +9,7 @@ from sqlalchemy import func, and_, or_
 
 from app.models.work_order import WorkOrder, VALID_STATUSES, VALID_WORK_TYPES
 from app.services.cable_length import calculate_and_store
+from app.services.audit import write_audit
 from app.models.connection import Connection, INSTALL_STATUSES, ACTIONS, CABLE_TYPES, PURPOSES
 from app.models.user import User
 
@@ -66,16 +67,21 @@ def create_work_order(db: Session, name: str, datacenter_id: int,
         notes=notes or None, status="draft",
     )
     db.add(wo)
+    db.flush()
+    write_audit(db, created_by, "medium", "work_order", wo.id, "create",
+                detail=f"Created WO '{wo.name}' type={work_type}")
     db.commit()
     db.refresh(wo)
     return wo
 
 
-def update_work_order(db: Session, wo: WorkOrder, **kwargs) -> WorkOrder:
+def update_work_order(db: Session, wo: WorkOrder, user_id: Optional[int] = None, **kwargs) -> WorkOrder:
     if "work_type" in kwargs and kwargs["work_type"] not in VALID_WORK_TYPES:
         raise ValueError(f"Invalid work type: {kwargs['work_type']}")
     for k, v in kwargs.items():
         setattr(wo, k, v or None if k == "notes" else v)
+    write_audit(db, user_id, "medium", "work_order", wo.id, "update",
+                detail=f"Updated WO '{wo.name}'")
     db.commit()
     db.refresh(wo)
     return wo
@@ -106,15 +112,21 @@ def transition_status(db: Session, wo: WorkOrder, new_status: str, user: User) -
             Connection.deleted_at.is_(None),
         ).update({"deleted_at": now, "deleted_by": user.id})
 
+    old_status = wo.status
     wo.status = new_status
+    write_audit(db, user.id, "work_orders", "work_order", wo.id, "status_change",
+                detail=f"'{wo.name}' {old_status} → {new_status}")
     db.commit()
     db.refresh(wo)
     return wo
 
 
-def delete_work_order(db: Session, wo: WorkOrder) -> None:
+def delete_work_order(db: Session, wo: WorkOrder, user_id: Optional[int] = None) -> None:
     if wo.status not in ("draft", "cancelled"):
         raise ValueError("Only draft or cancelled work orders can be deleted.")
+    wo_name, wo_id = wo.name, wo.id
+    write_audit(db, user_id, "medium", "work_order", wo_id, "delete",
+                detail=f"Deleted WO '{wo_name}'")
     db.delete(wo)
     db.commit()
 
@@ -301,6 +313,9 @@ def create_connection(db: Session, wo_id: int, form_data: dict,
         warnings.append(warn)
 
     db.add(conn)
+    db.flush()
+    write_audit(db, created_by, "medium", "connection", conn.id, "create",
+                detail=f"WO {wo_id} — {conn.device_rack_name_raw} {conn.device_port} → {conn.switch_name_raw} {conn.switch_port}")
     db.commit()
     db.refresh(conn)
     # Compute cable lengths immediately after save
@@ -332,6 +347,8 @@ def update_connection(db: Session, conn: Connection, form_data: dict,
     if warn:
         warnings.append(warn)
 
+    write_audit(db, updated_by, "medium", "connection", conn.id, "update",
+                detail=f"WO {conn.work_order_id} — {conn.device_rack_name_raw} {conn.device_port} → {conn.switch_name_raw} {conn.switch_port}")
     db.commit()
     db.refresh(conn)
     calculate_and_store(db, conn)
@@ -358,4 +375,6 @@ def bulk_create_connections(db: Session, wo_id: int, rows: list[dict],
 def soft_delete_connection(db: Session, conn: Connection, user_id: int) -> None:
     conn.deleted_at = datetime.utcnow()
     conn.deleted_by = user_id
+    write_audit(db, user_id, "medium", "connection", conn.id, "delete",
+                detail=f"WO {conn.work_order_id} conn {conn.id}")
     db.commit()

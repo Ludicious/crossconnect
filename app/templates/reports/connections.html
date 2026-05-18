@@ -3,6 +3,24 @@
 
 {% block extra_head %}
 <style>
+/* Inline edit controls (mirrors work_orders/detail.html) */
+.grid-input {
+  background: transparent; border: none; color: inherit;
+  width: 100%; min-width: 60px; font-size: .8rem;
+  padding: 2px 4px; border-radius: 3px;
+}
+.grid-input:focus {
+  background: var(--cc-navy); outline: 1px solid var(--cc-accent);
+}
+.grid-select {
+  background: transparent; border: none; color: inherit;
+  font-size: .8rem; padding: 2px 4px; width: 100%;
+  border-radius: 3px; cursor: pointer;
+}
+.grid-select:focus { background: var(--cc-navy); outline: 1px solid var(--cc-accent); }
+select.grid-select option { background: var(--cc-navy-light); }
+</style>
+<style>
 /* Column group header tints — matches editor */
 .rpt-th-device    { background-color: #1a3020 !important; }
 .rpt-th-dev-patch { background-color: #3a2a10 !important; }
@@ -266,12 +284,20 @@ tr.lag-member td.lag-cell { background: rgba(99,102,241,.12) !important; }
     <td class="{{ seg_cls(c.seg2_length) }}" title="Patch → Patch">{{ c.seg2_length or '—' }}</td>
     <td class="{{ seg_cls(c.seg3_length) }}" title="Patch → Switch">{{ c.seg3_length or '—' }}</td>
 
-    {# Install status #}
-    <td>
-      <span class="badge badge-install-{{ c.install_status }}">{{ c.install_status|replace('_',' ')|title }}</span>
+    {# Install status — inline editable #}
+    <td style="white-space:nowrap">
+      <select class="grid-select" data-field="install_status" style="min-width:90px"
+              onchange="saveInstallStatus(this, {{ c.id }}, {{ c.work_order_id }})">
+        {% for s in INSTALL_STATUSES %}
+        <option value="{{ s }}" {% if c.install_status == s %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>
+        {% endfor %}
+      </select>
     </td>
-    <td class="text-muted small" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-        title="{{ c.install_notes or '' }}">{{ c.install_notes or '' }}</td>
+    <td>
+      <input class="grid-input" data-field="install_notes" value="{{ c.install_notes or '' }}"
+             style="min-width:120px"
+             onblur="saveInstallStatus(this.closest('tr').querySelector('[data-field=install_status]'), {{ c.id }}, {{ c.work_order_id }})">
+    </td>
   </tr>
   {% endfor %}
   </tbody>
@@ -283,4 +309,61 @@ tr.lag-member td.lag-cell { background: rgba(99,102,241,.12) !important; }
   No connections found matching the current filters. Only issued, in-progress, and completed work orders are shown.
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const INSTALL_STATUSES = {{ INSTALL_STATUSES | tojson }};
+
+async function saveInstallStatus(el, connId, woId) {
+  const status = el.value;
+  const row = el.closest('tr');
+  const notes = row.querySelector('[data-field="install_notes"]')?.value || '';
+  const body = new URLSearchParams({install_status: status, install_notes: notes}).toString();
+  try {
+    const resp = await fetch(`/work-orders/${woId}/connections/${connId}/install-status`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body,
+    });
+    const json = await resp.json();
+    if (json.ok) {
+      el.style.transition = 'background 0.3s';
+      el.style.background = 'rgba(34,197,94,0.2)';
+      setTimeout(() => { el.style.background = ''; }, 800);
+      // Update row highlight class
+      row.classList.remove('status-blocked', 'status-change-required', 'status-done');
+      if (status === 'blocked') row.classList.add('status-blocked');
+      else if (status === 'change_required') row.classList.add('status-change-required');
+      else if (status === 'done') row.classList.add('status-done');
+    } else {
+      showToast(json.errors?.join('\n') || 'Status save failed', 'danger');
+    }
+  } catch (e) {
+    showToast('Network error saving status', 'danger');
+  }
+}
+
+function showToast(msg, type = 'info') {
+  const container = document.getElementById('toast-container') || (() => {
+    const div = document.createElement('div');
+    div.id = 'toast-container';
+    div.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+    div.style.zIndex = 9999;
+    document.body.appendChild(div);
+    return div;
+  })();
+  const id = 'toast-' + Date.now();
+  container.insertAdjacentHTML('beforeend', `
+<div id="${id}" class="toast align-items-center text-bg-${type} border-0" role="alert">
+  <div class="d-flex">
+    <div class="toast-body small" style="white-space:pre-wrap">${msg}</div>
+    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+  </div>
+</div>`);
+  const el = document.getElementById(id);
+  new bootstrap.Toast(el, {delay: type === 'warning' ? 6000 : 4000}).show();
+  el.addEventListener('hidden.bs.toast', () => el.remove());
+}
+</script>
 {% endblock %}

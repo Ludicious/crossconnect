@@ -34,6 +34,7 @@ from app.models.user import User
 from app.models.inventory import Datacenter, DCContact, Rack, System, Device, Switch, DeviceType
 from app.models.work_order import WorkOrder
 from app.models.connection import Connection
+from app.models.audit import AuditLog
 import app.services.inventory as inv_svc
 import app.services.work_orders as wo_svc
 from app.services.auth import create_user, get_user_by_username
@@ -117,6 +118,7 @@ def pre_run_cleanup(db):
 
     stale_users = db.query(User).filter(User.username == "_sim_architect").all()
     for u in stale_users:
+        db.query(AuditLog).filter(AuditLog.user_id == u.id).delete()
         db.delete(u)
 
     db.commit()
@@ -416,6 +418,23 @@ def test_template_renders(db, dc, rack, user):
         "FABRICS": ["A","B"],
     })
 
+    # Audit log page
+    from app.models.audit import AuditLog
+    render("audit/index.html", {
+        "entries": [],
+        "total": 0,
+        "page": 1,
+        "per_page": 50,
+        "total_pages": 1,
+        "users": [],
+        "entity_types": [],
+        "filter_entity_type": None,
+        "filter_user_id": None,
+        "filter_action": None,
+        "filter_date_from": None,
+        "filter_date_to": None,
+    })
+
 
 
 def test_work_orders(db, dc: Datacenter, rack: Rack, sw: Switch, user: User):
@@ -579,6 +598,109 @@ def test_work_orders(db, dc: Datacenter, rack: Rack, sw: Switch, user: User):
     check("Deleted connections tracked (R-rows + c3)", deleted >= 2, f"{deleted} deleted")
 
 
+# ── Excel import tests ────────────────────────────────────────────────────
+
+def test_excel_import(db, dc, rack, user):
+    section("Excel Import")
+    import io
+    import json
+    import openpyxl
+    from app.services.excel_import import (
+        parse_crossconnect_excel, generate_template,
+        CANONICAL_HEADERS, CANONICAL_FIELD_MAP,
+    )
+    from app.models.settings import AppSetting
+
+    # Build a minimal .xlsx in memory using canonical column layout
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Connections"
+    ws.append(CANONICAL_HEADERS)
+
+    def _row(**kwargs):
+        row = [""] * len(CANONICAL_HEADERS)
+        for field, val in kwargs.items():
+            idx = CANONICAL_FIELD_MAP.get(field)
+            if idx is not None:
+                row[idx] = val
+        return row
+
+    # row 1 — valid ADD
+    ws.append(_row(
+        action="ADD", cable_type="copper", purpose="prod",
+        device_rack_name_raw="R01", device_rack_u="1", device_slot="1", device_port="eth0",
+        switch_rack_name_raw="R02", switch_rack_u="2", switch_slot="1", switch_port="Gi0/1",
+        fabric="LAN",
+    ))
+    # row 2 — valid ADD with lag_id and fiber_mode
+    ws.append(_row(
+        action="ADD", cable_type="sfp", purpose="storage",
+        device_rack_name_raw="R01", device_rack_u="3", device_slot="1", device_port="hba0",
+        switch_rack_name_raw="R02", switch_rack_u="4", switch_slot="1", switch_port="Gi0/2",
+        fabric="SAN", lag_id="10", fiber_mode="singlemode",
+    ))
+    # row 3 — blank action, should be skipped
+    ws.append(_row(
+        cable_type="copper", device_rack_name_raw="R99", switch_port="Gi99/99",
+    ))
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    file_bytes = buf.getvalue()
+
+    col_map = CANONICAL_FIELD_MAP
+    rows = parse_crossconnect_excel(file_bytes, col_map, skip_sheets=["Schema"])
+    check("Canonical map: 2 data rows parsed (blank action skipped)", len(rows) == 2, f"got {len(rows)}")
+
+    r0 = rows[0]
+    check("Row 0: action uppercased to ADD", r0.get("action") == "ADD")
+    check("Row 0: fabric uppercased to LAN", r0.get("fabric") == "LAN")
+    check("Row 0: purpose lowercased to prod", r0.get("purpose") == "prod")
+
+    r1 = rows[1]
+    check("Row 1: lag_id coerced to int 10", r1.get("lag_id") == 10)
+    check("Row 1: fiber_mode preserved", r1.get("fiber_mode") == "singlemode")
+
+    # Test Honda / legacy layout
+    honda_map = {
+        "action": 0, "fabric": 1, "cable_type": 2, "purpose": 3,
+        "device_name_raw": 4, "device_rack_name_raw": 5, "device_rack_u": 6,
+        "device_slot": 7, "device_port": 8,
+        "switch_name_raw": 9, "switch_rack_name_raw": 10, "switch_rack_u": 11,
+        "switch_slot": 12, "switch_port": 13,
+        "vlan_vsan": 14, "lag_id": 15, "fiber_mode": 16, "comments": 17,
+    }
+    wb2 = openpyxl.Workbook()
+    ws2 = wb2.active
+    ws2.title = "Sheet1"
+    ws2.append(["ACTION", "FABRIC", "CABLE_TYPE", "PURPOSE",
+                "DEVICE_NAME", "DEVICE_RACK", "DEVICE_RACK_U",
+                "DEVICE_SLOT", "DEVICE_PORT",
+                "SWITCH_NAME", "SWITCH_RACK", "SWITCH_RACK_U",
+                "SWITCH_SLOT", "SWITCH_PORT",
+                "VLAN", "LAG_ID", "FIBER_MODE", "COMMENTS"])
+    ws2.append(["ADD", "SAN", "dac", "STORAGE",
+                "server01", "R01", 5, 1, "hba1",
+                "san-sw01", "R02", 10, 1, "Gi1/1",
+                "", 20, "multimode", ""])
+    buf2 = io.BytesIO()
+    wb2.save(buf2)
+    rows2 = parse_crossconnect_excel(buf2.getvalue(), honda_map, skip_sheets=[])
+    check("Honda map: 1 row parsed", len(rows2) == 1, f"got {len(rows2)}")
+    check("Honda: purpose lowercased", rows2[0].get("purpose") == "storage")
+    check("Honda: lag_id coerced to int 20", rows2[0].get("lag_id") == 20)
+    check("Honda: fiber_mode preserved", rows2[0].get("fiber_mode") == "multimode")
+
+    # Test generate_template returns valid xlsx bytes with header row
+    tmpl_bytes = generate_template()
+    check("generate_template returns non-empty bytes", len(tmpl_bytes) > 0)
+    wb3 = openpyxl.load_workbook(io.BytesIO(tmpl_bytes))
+    ws3 = wb3["Connections"]
+    first_row = [c.value for c in ws3[1]]
+    check("Template header row matches CANONICAL_HEADERS", first_row == CANONICAL_HEADERS)
+    check("Template has Schema sheet", "Schema" in wb3.sheetnames)
+
+
 # ── Cleanup ───────────────────────────────────────────────────────────────
 
 def cleanup(db):
@@ -603,6 +725,7 @@ def cleanup(db):
         db.query(DCContact).filter(DCContact.datacenter_id == dc_id).delete()
         db.query(Datacenter).filter(Datacenter.id == dc_id).delete()
     for user_id in CREATED_IDS["user"]:
+        db.query(AuditLog).filter(AuditLog.user_id == user_id).delete()
         db.query(User).filter(User.id == user_id).delete()
     db.commit()
     print("  Test data removed.")
@@ -629,6 +752,7 @@ def main():
         device = test_devices(db, rack, dt_storage, dt_chassis)
         sw = test_switches(db, rack)
         test_template_renders(db, dc, rack, user)
+        test_excel_import(db, dc, rack, user)
         test_work_orders(db, dc, rack, sw, user)
     except Exception as e:
         import traceback
