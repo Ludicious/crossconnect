@@ -29,6 +29,7 @@ class WorkOrder(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+    change_req_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     deleted_by: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id"), nullable=True

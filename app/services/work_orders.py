@@ -59,13 +59,15 @@ def get_work_order(db: Session, wo_id: int) -> Optional[WorkOrder]:
 def create_work_order(db: Session, name: str, datacenter_id: int,
                       work_type: str, created_by: int,
                       target_date: Optional[date] = None,
-                      notes: str = "") -> WorkOrder:
+                      notes: str = "",
+                      change_req_number: Optional[str] = None) -> WorkOrder:
     if work_type not in VALID_WORK_TYPES:
         raise ValueError(f"Invalid work type: {work_type}")
     wo = WorkOrder(
         name=name, datacenter_id=datacenter_id, work_type=work_type,
         created_by=created_by, target_date=target_date,
         notes=notes or None, status="draft",
+        change_req_number=change_req_number,
     )
     db.add(wo)
     db.flush()

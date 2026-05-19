@@ -70,6 +70,7 @@ async def wo_create(
     work_type: str = Form("install"),
     target_date: Optional[str] = Form(None),
     notes: str = Form(""),
+    change_req_number: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -78,7 +79,8 @@ async def wo_create(
         td = date.fromisoformat(target_date) if target_date else None
         wo = svc.create_work_order(db, name=name, datacenter_id=datacenter_id,
                                     work_type=work_type, created_by=user.id,
-                                    target_date=td, notes=notes)
+                                    target_date=td, notes=notes,
+                                    change_req_number=change_req_number or None)
         return RedirectResponse(f"/work-orders/{wo.id}", status_code=302)
     except ValueError as e:
         datacenters = inv_svc.list_datacenters(db)
@@ -148,6 +150,7 @@ async def wo_update(
     name: str = Form(...), datacenter_id: int = Form(...),
     work_type: str = Form("install"), target_date: Optional[str] = Form(None),
     notes: str = Form(""),
+    change_req_number: Optional[str] = Form(None),
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     _arch_or_admin(request, db)
@@ -156,7 +159,8 @@ async def wo_update(
         raise HTTPException(404)
     td = date.fromisoformat(target_date) if target_date else None
     svc.update_work_order(db, wo, user_id=user.id, name=name, datacenter_id=datacenter_id,
-                           work_type=work_type, target_date=td, notes=notes)
+                           work_type=work_type, target_date=td, notes=notes,
+                           change_req_number=change_req_number or None)
     return RedirectResponse(f"/work-orders/{wo_id}", status_code=302)
 
 

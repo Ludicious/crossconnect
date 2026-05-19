@@ -48,6 +48,12 @@
           <input type="date" class="form-control" name="target_date"
                  value="{{ wo.target_date.isoformat() if wo and wo.target_date else '' }}">
         </div>
+        <div class="col-md-6">
+          <label class="form-label small fw-semibold">Change Request # <span class="text-muted fw-normal">(optional)</span></label>
+          <input type="text" class="form-control mono" name="change_req_number"
+                 value="{{ wo.change_req_number if wo and wo.change_req_number else '' }}"
+                 placeholder="CHG0012345">
+        </div>
         <div class="col-12">
           <label class="form-label small fw-semibold">Notes</label>
           <textarea class="form-control" name="notes" rows="2">{{ wo.notes if wo and wo.notes else '' }}</textarea>
