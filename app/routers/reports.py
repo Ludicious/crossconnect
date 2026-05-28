@@ -32,16 +32,24 @@ async def reports_index(request: Request, user=Depends(get_current_user),
 @router.get("/connections", response_class=HTMLResponse)
 async def connection_report(
     request: Request,
-    dc_id: Optional[int] = Query(None),
-    rack_id: Optional[int] = Query(None),
-    switch_id: Optional[int] = Query(None),
-    wo_id: Optional[int] = Query(None),
-    install_status: Optional[str] = Query(None),
-    fabric: Optional[str] = Query(None),
-    action: Optional[str] = Query(None),
+    dc_id: str = Query(default=""),
+    rack_id: str = Query(default=""),
+    switch_id: str = Query(default=""),
+    wo_id: str = Query(default=""),
+    install_status: str = Query(default=""),
+    fabric: str = Query(default=""),
+    action: str = Query(default=""),
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    dc_id_int     = int(dc_id)      if dc_id.strip()      else None
+    rack_id_int   = int(rack_id)    if rack_id.strip()    else None
+    switch_id_int = int(switch_id)  if switch_id.strip()  else None
+    wo_id_int     = int(wo_id)      if wo_id.strip()      else None
+    install_status_val = install_status.strip() or None
+    fabric_val         = fabric.strip() or None
+    action_val         = action.strip() or None
+
     # Build connection query with filters
     q = (db.query(Connection)
          .join(WorkOrder)
@@ -49,23 +57,23 @@ async def connection_report(
          .filter(WorkOrder.status.in_(["issued", "in_progress", "complete"]))
          .options(joinedload(Connection.work_order).joinedload(WorkOrder.datacenter)))
 
-    if dc_id:
-        q = q.filter(WorkOrder.datacenter_id == dc_id)
-    if wo_id:
-        q = q.filter(Connection.work_order_id == wo_id)
-    if install_status:
-        q = q.filter(Connection.install_status == install_status)
-    if fabric:
-        q = q.filter(Connection.fabric == fabric)
-    if action:
-        q = q.filter(Connection.action == action)
-    if rack_id:
+    if dc_id_int:
+        q = q.filter(WorkOrder.datacenter_id == dc_id_int)
+    if wo_id_int:
+        q = q.filter(Connection.work_order_id == wo_id_int)
+    if install_status_val:
+        q = q.filter(Connection.install_status == install_status_val)
+    if fabric_val:
+        q = q.filter(Connection.fabric == fabric_val)
+    if action_val:
+        q = q.filter(Connection.action == action_val)
+    if rack_id_int:
         q = q.filter(
-            or_(Connection.device_rack_id == rack_id,
-                Connection.switch_rack_id == rack_id)
+            or_(Connection.device_rack_id == rack_id_int,
+                Connection.switch_rack_id == rack_id_int)
         )
-    if switch_id:
-        q = q.filter(Connection.switch_id == switch_id)
+    if switch_id_int:
+        q = q.filter(Connection.switch_id == switch_id_int)
 
     connections = q.order_by(WorkOrder.id, Connection.id).all()
 
@@ -80,11 +88,11 @@ async def connection_report(
         "connections": connections,
         "datacenters": datacenters,
         "work_orders": work_orders,
-        "filter_dc_id": dc_id,
-        "filter_wo_id": wo_id,
-        "filter_install_status": install_status,
-        "filter_fabric": fabric,
-        "filter_action": action,
+        "filter_dc_id": dc_id_int,
+        "filter_wo_id": wo_id_int,
+        "filter_install_status": install_status_val,
+        "filter_fabric": fabric_val,
+        "filter_action": action_val,
         "INSTALL_STATUSES": ["pending", "done", "blocked", "change_required"],
         "ACTIONS": ["A", "R", "C"],
         "FABRICS": ["A", "B"],

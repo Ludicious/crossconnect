@@ -35,17 +35,19 @@ def _arch_or_admin(request, db):
 @router.get("/", response_class=HTMLResponse)
 async def wo_list(
     request: Request,
-    dc_id: Optional[int] = Query(None),
-    status: Optional[str] = Query(None),
+    dc_id: str = Query(default=""),
+    status: str = Query(default=""),
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    work_orders = svc.list_work_orders(db, dc_id=dc_id, status=status)
+    dc_id_int = int(dc_id) if dc_id.strip() else None
+    status_val = status.strip() or None
+    work_orders = svc.list_work_orders(db, dc_id=dc_id_int, status=status_val)
     datacenters = inv_svc.list_datacenters(db)
     return _tpl(request, "work_orders/list.html", {
         "request": request, "user": user,
         "work_orders": work_orders, "datacenters": datacenters,
-        "filter_dc_id": dc_id, "filter_status": status,
+        "filter_dc_id": dc_id_int, "filter_status": status_val,
     })
 
 
