@@ -252,6 +252,11 @@ def _check_device_port_warning(db: Session, conn: Connection,
 
 def _conn_from_form(data: dict) -> dict:
     """Coerce form dict to connection field dict."""
+    def _s(v):
+        return "" if v is None else str(v)
+
+    data = {k: _s(v) for k, v in data.items()}
+
     def _int(v):
         try: return int(v) if v else None
         except (ValueError, TypeError): return None
