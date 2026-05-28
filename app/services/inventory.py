@@ -667,3 +667,141 @@ def bulk_create_devices(
             skipped.append({"row": i + 1, "reason": str(exc)})
 
     return {"created": created, "skipped": skipped}
+
+
+# ── Rack elevation ────────────────────────────────────────────────────────
+
+def get_rack_elevation(db: Session, rack_id: int, max_ru: int = 42) -> list[dict]:
+    """
+    Build a slot-per-U elevation list for a rack.
+    Returns one dict per U (1..max_ru), with device info + connection stats.
+    Continuation rows (U slots 2-N of a multi-U device) set is_continuation=True.
+    """
+    from app.models.connection import Connection
+    from app.models.work_order import WorkOrder
+
+    # Load rack with devices, their types, and their systems
+    rack = (
+        db.query(Rack)
+        .options(
+            joinedload(Rack.devices)
+            .joinedload(Device.device_type),
+            joinedload(Rack.devices)
+            .joinedload(Device.system),
+        )
+        .filter(Rack.id == rack_id, Rack.deleted_at.is_(None))
+        .first()
+    )
+    if not rack:
+        return []
+
+    active_devices = [d for d in rack.devices if d.deleted_at is None]
+
+    # ── Connection stats in one query ──────────────────────────────────────
+    # Only count connections that reference an inventory device (device_id set)
+    conn_rows = (
+        db.query(
+            Connection.device_id,
+            Connection.fabric,
+            Connection.work_order_id,
+            WorkOrder.status,
+        )
+        .join(WorkOrder, Connection.work_order_id == WorkOrder.id)
+        .filter(
+            Connection.device_rack_id == rack_id,
+            Connection.deleted_at.is_(None),
+            Connection.device_id.isnot(None),
+        )
+        .all()
+    )
+
+    # Build per-device stats dict
+    device_stats: dict[int, dict] = {}
+    for d_id, fabric, wo_id, wo_status in conn_rows:
+        if d_id not in device_stats:
+            device_stats[d_id] = {"fabric_a": 0, "fabric_b": 0, "active_wo_ids": set()}
+        if fabric == "A":
+            device_stats[d_id]["fabric_a"] += 1
+        elif fabric == "B":
+            device_stats[d_id]["fabric_b"] += 1
+        if wo_status in ("issued", "in_progress"):
+            device_stats[d_id]["active_wo_ids"].add(wo_id)
+
+    # ── Build U → (device, offset) occupancy map ───────────────────────────
+    u_map: dict[int, tuple] = {}  # u → (device, offset_within_device)
+    for device in active_devices:
+        if device.starting_ru is None:
+            continue
+        height = 1
+        if device.device_type and device.device_type.rack_u:
+            height = device.device_type.rack_u
+        for offset in range(height):
+            u = device.starting_ru + offset
+            if 1 <= u <= max_ru:
+                u_map[u] = (device, offset)
+
+    # ── Assemble slot list ─────────────────────────────────────────────────
+    slots: list[dict] = []
+    for u in range(1, max_ru + 1):
+        if u not in u_map:
+            slots.append({
+                "u": u,
+                "device": None,
+                "span": 1,
+                "is_continuation": False,
+                "system_label": None,
+                "type_label": None,
+                "fabric_a_ports": 0,
+                "fabric_b_ports": 0,
+                "active_wo_count": 0,
+            })
+            continue
+
+        device, offset = u_map[u]
+        is_continuation = offset > 0
+
+        if is_continuation:
+            slots.append({
+                "u": u,
+                "device": device,
+                "span": None,
+                "is_continuation": True,
+                "system_label": None,
+                "type_label": None,
+                "fabric_a_ports": 0,
+                "fabric_b_ports": 0,
+                "active_wo_count": 0,
+            })
+            continue
+
+        # First U of this device
+        height = 1
+        if device.device_type and device.device_type.rack_u:
+            height = device.device_type.rack_u
+
+        system_label: Optional[str] = None
+        if device.system:
+            system_label = (
+                f"{device.system.name} / {device.node_label}"
+                if device.node_label
+                else device.system.name
+            )
+
+        type_label: Optional[str] = None
+        if device.device_type:
+            type_label = f"{device.device_type.manufacturer} {device.device_type.model}"
+
+        stats = device_stats.get(device.id, {})
+        slots.append({
+            "u": u,
+            "device": device,
+            "span": height,
+            "is_continuation": False,
+            "system_label": system_label,
+            "type_label": type_label,
+            "fabric_a_ports": stats.get("fabric_a", 0),
+            "fabric_b_ports": stats.get("fabric_b", 0),
+            "active_wo_count": len(stats.get("active_wo_ids", set())),
+        })
+
+    return slots

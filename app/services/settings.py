@@ -2,6 +2,12 @@ from sqlalchemy.orm import Session
 from app.models.settings import AppSetting
 
 
+def get_setting(db: Session, key: str, default: str = "") -> str:
+    """Return a raw app_setting string value, or default if unset."""
+    row = db.get(AppSetting, key)
+    return row.value if row else default
+
+
 def get_bool_setting(db: Session, key: str, default: bool = True) -> bool:
     """Read a boolean app_setting. 'true'/'1'/'yes' = True, else False."""
     row = db.get(AppSetting, key)

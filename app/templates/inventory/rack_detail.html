@@ -31,6 +31,91 @@
   </div>
 </div>
 
+<!-- ── Rack Elevation (collapsible) ──────────────────────────────────── -->
+{% if elevation %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center py-2"
+       style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#rack-elevation-collapse">
+    <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em">
+      <i class="bi bi-hdd-rack me-1"></i>Rack Elevation
+    </span>
+    <span class="text-muted small">
+      {% set used = elevation | rejectattr('device', 'none') | rejectattr('is_continuation') | list | length %}
+      {{ used }}/{{ max_ru }}U occupied
+      <i class="bi bi-chevron-down ms-1"></i>
+    </span>
+  </div>
+  <div class="collapse" id="rack-elevation-collapse">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+      <table class="table table-sm mb-0" style="font-size:.78rem;border-collapse:collapse">
+        <thead>
+          <tr style="font-size:.7rem;text-transform:uppercase;letter-spacing:.04em">
+            <th style="width:36px">U</th>
+            <th>Device</th>
+            <th>Type</th>
+            <th>System / Node</th>
+            <th style="width:70px">Fabric</th>
+            <th style="width:50px">WOs</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for slot in elevation %}
+          {% if slot.is_continuation %}
+          {# Continuation row — only U cell; device cells covered by rowspan above #}
+          <tr style="height:20px">
+            <td class="mono text-muted" style="font-size:.7rem;padding:1px 4px;border-top:none">{{ slot.u }}</td>
+          </tr>
+          {% elif slot.device %}
+          {# First row of a device #}
+          {% set total_conns = slot.fabric_a_ports + slot.fabric_b_ports %}
+          <tr style="background:rgba(30,58,47,.3)"
+              title="{{ total_conns }} active connection{{ 's' if total_conns != 1 }}">
+            <td class="mono" style="padding:3px 4px;vertical-align:middle">{{ slot.u }}</td>
+            <td rowspan="{{ slot.span }}" style="padding:3px 6px;vertical-align:middle;border-left:2px solid rgba(34,197,94,.35)">
+              <a href="/inventory/devices/{{ slot.device.id }}/edit"
+                 class="text-decoration-none text-light mono fw-semibold">{{ slot.device.name }}</a>
+              {% if not slot.type_label %}
+                <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem">⚠ No type</span>
+              {% endif %}
+            </td>
+            <td rowspan="{{ slot.span }}" style="padding:3px 6px;vertical-align:middle" class="text-muted">
+              {{ slot.type_label or '—' }}
+            </td>
+            <td rowspan="{{ slot.span }}" style="padding:3px 6px;vertical-align:middle" class="text-muted">
+              {{ slot.system_label or '—' }}
+            </td>
+            <td rowspan="{{ slot.span }}" style="padding:3px 4px;vertical-align:middle">
+              {% if slot.fabric_a_ports %}<span class="badge bg-primary me-1" style="font-size:.65rem">A</span>{% endif %}
+              {% if slot.fabric_b_ports %}<span class="badge me-1" style="font-size:.65rem;background:#7c3aed">B</span>{% endif %}
+              {% if not slot.fabric_a_ports and not slot.fabric_b_ports %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td rowspan="{{ slot.span }}" style="padding:3px 4px;vertical-align:middle">
+              {% if slot.active_wo_count %}
+              <a href="/work-orders/?device_id={{ slot.device.id }}"
+                 class="badge bg-warning text-dark text-decoration-none" style="font-size:.65rem">
+                {{ slot.active_wo_count }}
+              </a>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          {# Empty U slot #}
+          <tr style="opacity:.4">
+            <td class="mono" style="padding:2px 4px;font-size:.7rem">{{ slot.u }}</td>
+            <td style="padding:2px 6px" class="text-muted">—</td>
+            <td></td><td></td><td></td><td></td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-3">
   <!-- Devices -->
   <div class="col-lg-6">

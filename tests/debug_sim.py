@@ -374,7 +374,9 @@ def test_template_renders(db, dc, rack, user):
     render("inventory/dc_detail.html", {"dc": dc_full, "racks": dc_full.racks})
     render("inventory/dc_form.html", {"dc": None, "error": None})
     render("inventory/dc_form.html", {"dc": dc_full, "error": None})
-    render("inventory/rack_detail.html", {"rack": rack_full})
+    from app.services.inventory import get_rack_elevation
+    elevation = get_rack_elevation(db, rack_full.id, max_ru=42)
+    render("inventory/rack_detail.html", {"rack": rack_full, "elevation": elevation, "max_ru": 42})
     render("inventory/rack_form.html", {"dc": dc_full, "rack": None, "error": None})
     render("inventory/rack_form.html", {"dc": dc_full, "rack": rack_full, "error": None})
     render("inventory/device_type_list.html", {"device_types": dts})

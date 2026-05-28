@@ -11,6 +11,7 @@ from typing import Optional
 from app.db import get_db
 from app.routers.auth import get_current_user, require_roles
 import app.services.inventory as svc
+from app.services.settings import get_setting
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 templates = Jinja2Templates(directory="app/templates")
@@ -384,7 +385,12 @@ async def rack_detail(rack_id: int, request: Request, user=Depends(get_current_u
     rack = svc.get_rack(db, rack_id)
     if not rack:
         raise HTTPException(404)
-    return _tpl(request, "inventory/rack_detail.html", {"request": request, "user": user, "rack": rack})
+    max_ru = int(get_setting(db, "max_rack_ru") or 42)
+    elevation = svc.get_rack_elevation(db, rack_id, max_ru=max_ru)
+    return _tpl(request, "inventory/rack_detail.html", {
+        "request": request, "user": user, "rack": rack,
+        "elevation": elevation, "max_ru": max_ru,
+    })
 
 
 @router.get("/racks/{rack_id}/edit", response_class=HTMLResponse)
