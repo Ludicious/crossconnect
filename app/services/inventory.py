@@ -12,6 +12,11 @@ from app.services.audit import write_audit
 from app.services.settings import get_bool_setting
 
 
+def _s(v) -> str:
+    """Coerce any cell value (int, float, None, str) to a stripped string."""
+    return "" if v is None else str(v).strip()
+
+
 # ── Datacenters ───────────────────────────────────────────────────────────
 
 def list_datacenters(db: Session) -> list[Datacenter]:
@@ -498,3 +503,167 @@ def autocomplete_device_types(db: Session, q: str, category: Optional[str] = Non
              "manufacturer": r.manufacturer, "model": r.model,
              "category": r.category, "rack_u": r.rack_u,
              "slot_count": r.slot_count} for r in rows]
+
+
+# ── CSV Bulk Import helpers ───────────────────────────────────────────────
+
+def get_rack_by_name(db: Session, dc_id: int, name: str) -> "Optional[Rack]":
+    return db.query(Rack).filter(
+        Rack.datacenter_id == dc_id,
+        func.lower(Rack.name) == name.lower(),
+        Rack.deleted_at.is_(None),
+    ).first()
+
+
+def get_system_by_name(db: Session, name: str) -> "Optional[System]":
+    return db.query(System).filter(func.lower(System.name) == name.lower()).first()
+
+
+def get_device_type_by_model(db: Session, model: str) -> "Optional[DeviceType]":
+    return db.query(DeviceType).filter(func.lower(DeviceType.model) == model.lower()).first()
+
+
+def bulk_create_racks(
+    db: Session,
+    rows: list[dict],
+    user_id: Optional[int] = None,
+) -> dict:
+    """
+    Import racks from a list of dicts (parsed from CSV).
+    Returns {created: N, skipped: [{row, reason}]}.
+    """
+    created = 0
+    skipped: list[dict] = []
+
+    for i, row in enumerate(rows):
+        dc_code  = _s(row.get("datacenter_code", ""))
+        name     = _s(row.get("name", ""))
+        row_lbl  = _s(row.get("row_label", "")) or None
+        rack_num = _s(row.get("rack_number", "")) or None
+        notes    = _s(row.get("notes", "")) or None
+
+        if not dc_code or not name:
+            skipped.append({"row": i + 1, "reason": "Missing datacenter_code or name"})
+            continue
+
+        dc = get_datacenter_by_code(db, dc_code)
+        if not dc:
+            skipped.append({"row": i + 1, "reason": f"Datacenter '{dc_code}' not found"})
+            continue
+
+        if get_rack_by_name(db, dc.id, name):
+            skipped.append({"row": i + 1, "reason": f"Rack '{name}' already exists in {dc.code}"})
+            continue
+
+        # Compose grid_position from row_label + rack_number if available
+        grid_pos = ""
+        if row_lbl and rack_num:
+            grid_pos = f"{row_lbl}{rack_num}"
+        elif row_lbl:
+            grid_pos = row_lbl
+        elif rack_num:
+            grid_pos = rack_num
+
+        try:
+            create_rack(db, dc_id=dc.id, name=name, grid_position=grid_pos,
+                        notes=notes or "", user_id=user_id)
+            created += 1
+        except ValueError as exc:
+            skipped.append({"row": i + 1, "reason": str(exc)})
+
+    return {"created": created, "skipped": skipped}
+
+
+def bulk_create_devices(
+    db: Session,
+    rows: list[dict],
+    user_id: Optional[int] = None,
+) -> dict:
+    """
+    Import devices from a list of dicts (parsed from CSV).
+    Returns {created: N, skipped: [{row, reason}]}.
+    Auto-creates stub systems when system_name is provided but unknown.
+    """
+    created = 0
+    skipped: list[dict] = []
+
+    for i, row in enumerate(rows):
+        dc_code     = _s(row.get("datacenter_code", ""))
+        rack_name   = _s(row.get("rack_name", ""))
+        device_name = _s(row.get("device_name", ""))
+
+        if not dc_code or not rack_name or not device_name:
+            skipped.append({"row": i + 1, "reason": "Missing datacenter_code, rack_name, or device_name"})
+            continue
+
+        dc = get_datacenter_by_code(db, dc_code)
+        if not dc:
+            skipped.append({"row": i + 1, "reason": f"Datacenter '{dc_code}' not found"})
+            continue
+
+        rack = get_rack_by_name(db, dc.id, rack_name)
+        if not rack:
+            skipped.append({"row": i + 1, "reason": f"Rack '{rack_name}' not found in {dc.code}"})
+            continue
+
+        # Duplicate device check within the rack
+        dup = db.query(Device).filter(
+            Device.rack_id == rack.id,
+            func.lower(Device.name) == device_name.lower(),
+            Device.deleted_at.is_(None),
+        ).first()
+        if dup:
+            skipped.append({"row": i + 1, "reason": f"Device '{device_name}' already exists in rack {rack_name}"})
+            continue
+
+        # starting_ru — optional integer 1-54
+        starting_ru: Optional[int] = None
+        ru_raw = _s(row.get("starting_ru", ""))
+        if ru_raw:
+            try:
+                v = int(float(ru_raw))
+                if 1 <= v <= 54:
+                    starting_ru = v
+            except (ValueError, TypeError):
+                pass
+
+        # System — look up or auto-create stub
+        system_id: Optional[int] = None
+        sys_name = _s(row.get("system_name", "")) or None
+        if sys_name:
+            sys_obj = get_system_by_name(db, sys_name)
+            if not sys_obj:
+                sys_obj = System(name=sys_name, system_type=None, notes=None)
+                db.add(sys_obj)
+                db.flush()
+                write_audit(db, user_id, "wide", "system", sys_obj.id, "create",
+                            detail=f"{sys_obj.name} (auto via device import)")
+                db.commit()
+                db.refresh(sys_obj)
+            system_id = sys_obj.id
+
+        # Device type — look up by model string, leave None if not found
+        device_type_id: Optional[int] = None
+        dt_model = _s(row.get("device_type_model", "")) or None
+        if dt_model:
+            dt_obj = get_device_type_by_model(db, dt_model)
+            if dt_obj:
+                device_type_id = dt_obj.id
+
+        serial     = _s(row.get("serial", "")) or None
+        node_label = _s(row.get("node_label", "")) or None
+        notes      = _s(row.get("notes", "")) or None
+
+        try:
+            create_device(
+                db, rack_id=rack.id, name=device_name,
+                system_id=system_id, node_label=node_label,
+                serial=serial, starting_ru=starting_ru,
+                device_type_id=device_type_id,
+                notes=notes or "", user_id=user_id,
+            )
+            created += 1
+        except Exception as exc:
+            skipped.append({"row": i + 1, "reason": str(exc)})
+
+    return {"created": created, "skipped": skipped}

@@ -380,6 +380,8 @@ def test_template_renders(db, dc, rack, user):
     render("inventory/device_type_list.html", {"device_types": dts})
     render("inventory/device_type_form.html", {"dt": None, "error": None})
     render("inventory/system_form.html", {"system": None, "error": None})
+    render("inventory/rack_import.html",   {"preview": None, "result": None, "prefill_dc": ""})
+    render("inventory/device_import.html", {"preview": None, "result": None})
 
     # Work order pages — need a WO with connections
     from app.services.work_orders import list_work_orders, list_connections

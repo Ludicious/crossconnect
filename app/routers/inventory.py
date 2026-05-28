@@ -1,5 +1,9 @@
-from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+import csv
+import io
+import json
+
+from fastapi import APIRouter, Request, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -166,6 +170,213 @@ async def rack_create(
     except ValueError as e:
         return _tpl(request, "inventory/rack_form.html",
                     {"request": request, "user": user, "dc": dc, "rack": None, "error": str(e)}, 400)
+
+
+# ── Rack CSV import ───────────────────────────────────────────────────────
+
+_RACK_CSV_HEADERS = ["datacenter_code", "name", "row_label", "rack_number", "notes"]
+
+def _parse_csv(text: str) -> list[dict]:
+    reader = csv.DictReader(io.StringIO(text))
+    return [row for row in reader]
+
+@router.get("/racks/import-template")
+async def rack_import_template(user=Depends(get_current_user)):
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(_RACK_CSV_HEADERS)
+    w.writerow(["DC1", "DC1-A01", "A", "01", "Example rack"])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="rack_import_template.csv"'},
+    )
+
+
+@router.get("/racks/import", response_class=HTMLResponse)
+async def rack_import_get(
+    request: Request, user=Depends(get_current_user), db: Session = Depends(get_db),
+    dc_code: Optional[str] = Query(None),
+):
+    _arch_or_admin(request, db)
+    return _tpl(request, "inventory/rack_import.html", {
+        "request": request, "user": user,
+        "preview": None, "result": None,
+        "prefill_dc": dc_code or "",
+    })
+
+
+@router.post("/racks/import", response_class=HTMLResponse)
+async def rack_import_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    file: Optional[UploadFile] = File(None),
+    raw_json: Optional[str] = Form(None),
+    confirmed: Optional[str] = Form(None),
+):
+    _arch_or_admin(request, db)
+
+    if confirmed and raw_json:
+        rows = json.loads(raw_json)
+        result = svc.bulk_create_racks(db, rows, user_id=user.id)
+        return _tpl(request, "inventory/rack_import.html", {
+            "request": request, "user": user,
+            "preview": None, "result": result, "prefill_dc": "",
+        })
+
+    # Parse uploaded file for preview
+    if not file or not file.filename:
+        return _tpl(request, "inventory/rack_import.html", {
+            "request": request, "user": user,
+            "preview": None, "result": None, "prefill_dc": "",
+            "error": "No file uploaded.",
+        }, 400)
+
+    text = (await file.read()).decode("utf-8-sig", errors="replace")
+    rows = _parse_csv(text)
+    if not rows:
+        return _tpl(request, "inventory/rack_import.html", {
+            "request": request, "user": user,
+            "preview": None, "result": None, "prefill_dc": "",
+            "error": "CSV is empty or header-only.",
+        }, 400)
+
+    # Validate rows for preview (no commits)
+    preview_rows = []
+    for i, row in enumerate(rows):
+        dc_code = svc._s(row.get("datacenter_code", ""))
+        name    = svc._s(row.get("name", ""))
+        status, reason = "ok", ""
+        if not dc_code or not name:
+            status, reason = "error", "Missing datacenter_code or name"
+        elif not svc.get_datacenter_by_code(db, dc_code):
+            status, reason = "error", f"Datacenter '{dc_code}' not found"
+        elif svc.get_rack_by_name(db, svc.get_datacenter_by_code(db, dc_code).id, name):
+            status, reason = "skip", f"Rack '{name}' already exists"
+        preview_rows.append({**row, "_row": i + 1, "_status": status, "_reason": reason})
+
+    return _tpl(request, "inventory/rack_import.html", {
+        "request": request, "user": user,
+        "preview": preview_rows,
+        "raw_json": json.dumps(rows),
+        "result": None,
+        "prefill_dc": "",
+    })
+
+
+# ── Device CSV import ─────────────────────────────────────────────────────
+
+_DEVICE_CSV_HEADERS = [
+    "datacenter_code", "rack_name", "starting_ru", "device_name",
+    "serial", "system_name", "node_label", "device_type_model", "notes",
+]
+
+
+@router.get("/devices/import-template")
+async def device_import_template(user=Depends(get_current_user)):
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(_DEVICE_CSV_HEADERS)
+    w.writerow(["DC1", "DC1-A01", "1", "dc1-storage-01", "SN12345",
+                "FlashSystem-01", "Node A", "FlashSystem 9200", "Primary node"])
+    w.writerow(["DC1", "DC1-A01", "3", "dc1-storage-02", "",
+                "FlashSystem-01", "Node B", "", ""])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="device_import_template.csv"'},
+    )
+
+
+@router.get("/devices/import", response_class=HTMLResponse)
+async def device_import_get(
+    request: Request, user=Depends(get_current_user), db: Session = Depends(get_db),
+):
+    _arch_or_admin(request, db)
+    return _tpl(request, "inventory/device_import.html", {
+        "request": request, "user": user,
+        "preview": None, "result": None,
+    })
+
+
+@router.post("/devices/import", response_class=HTMLResponse)
+async def device_import_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    file: Optional[UploadFile] = File(None),
+    raw_json: Optional[str] = Form(None),
+    confirmed: Optional[str] = Form(None),
+):
+    _arch_or_admin(request, db)
+
+    if confirmed and raw_json:
+        rows = json.loads(raw_json)
+        result = svc.bulk_create_devices(db, rows, user_id=user.id)
+        return _tpl(request, "inventory/device_import.html", {
+            "request": request, "user": user,
+            "preview": None, "result": result,
+        })
+
+    if not file or not file.filename:
+        return _tpl(request, "inventory/device_import.html", {
+            "request": request, "user": user,
+            "preview": None, "result": None,
+            "error": "No file uploaded.",
+        }, 400)
+
+    text = (await file.read()).decode("utf-8-sig", errors="replace")
+    rows = _parse_csv(text)
+    if not rows:
+        return _tpl(request, "inventory/device_import.html", {
+            "request": request, "user": user,
+            "preview": None, "result": None,
+            "error": "CSV is empty or header-only.",
+        }, 400)
+
+    # Validate for preview
+    preview_rows = []
+    for i, row in enumerate(rows):
+        dc_code     = svc._s(row.get("datacenter_code", ""))
+        rack_name   = svc._s(row.get("rack_name", ""))
+        device_name = svc._s(row.get("device_name", ""))
+        status, reason, warn = "ok", "", ""
+
+        if not dc_code or not rack_name or not device_name:
+            status, reason = "error", "Missing datacenter_code, rack_name, or device_name"
+        else:
+            dc = svc.get_datacenter_by_code(db, dc_code)
+            if not dc:
+                status, reason = "error", f"Datacenter '{dc_code}' not found"
+            else:
+                rack = svc.get_rack_by_name(db, dc.id, rack_name)
+                if not rack:
+                    status, reason = "error", f"Rack '{rack_name}' not found in {dc_code}"
+                else:
+                    from app.models.inventory import Device
+                    from sqlalchemy import func as _f
+                    dup = db.query(Device).filter(
+                        Device.rack_id == rack.id,
+                        _f.lower(Device.name) == device_name.lower(),
+                        Device.deleted_at.is_(None),
+                    ).first()
+                    if dup:
+                        status, reason = "skip", f"Device '{device_name}' already exists in {rack_name}"
+                    else:
+                        dt_model = svc._s(row.get("device_type_model", ""))
+                        if dt_model and not svc.get_device_type_by_model(db, dt_model):
+                            warn = f"Device type '{dt_model}' not found — will import without type"
+
+        preview_rows.append({**row, "_row": i + 1, "_status": status,
+                              "_reason": reason, "_warn": warn})
+
+    return _tpl(request, "inventory/device_import.html", {
+        "request": request, "user": user,
+        "preview": preview_rows,
+        "raw_json": json.dumps(rows),
+        "result": None,
+    })
 
 
 @router.get("/racks/{rack_id}", response_class=HTMLResponse)

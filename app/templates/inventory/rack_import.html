@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Import Racks — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="fw-bold mb-0"><i class="bi bi-hdd-rack me-2 text-primary"></i>Import Racks</h4>
+  <a href="/inventory/racks/import-template" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-download me-1"></i>Download Template
+  </a>
+</div>
+
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
+{# ── Result state (after commit) ────────────────────────────────────────── #}
+{% if result %}
+<div class="alert {% if result.skipped|length %}alert-warning{% else %}alert-success{% endif %}">
+  <strong>{{ result.created }} rack(s) created.</strong>
+  {% if result.skipped|length %}
+    {{ result.skipped|length }} row(s) skipped.
+  {% endif %}
+</div>
+{% if result.skipped %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header py-2 small fw-semibold">Skipped rows</div>
+  <div class="card-body p-0">
+    <table class="table table-sm small mb-0">
+      <thead><tr><th>Row</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for s in result.skipped %}
+        <tr><td>{{ s.row }}</td><td class="text-warning">{{ s.reason }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+<a href="/inventory" class="btn btn-outline-secondary btn-sm">Back to Inventory</a>
+<a href="/inventory/racks/import" class="btn cc-btn-primary btn-sm ms-2">Import More</a>
+
+{# ── Preview state (validate then confirm) ──────────────────────────────── #}
+{% elif preview %}
+{% set ok_count   = preview | selectattr('_status', 'equalto', 'ok')    | list | length %}
+{% set skip_count = preview | selectattr('_status', 'equalto', 'skip')  | list | length %}
+{% set err_count  = preview | selectattr('_status', 'equalto', 'error') | list | length %}
+
+<div class="alert alert-info small py-2 mb-3">
+  <strong>Preview:</strong> {{ ok_count }} to create &nbsp;·&nbsp;
+  {{ skip_count }} to skip &nbsp;·&nbsp;
+  {{ err_count }} error(s).
+  {% if err_count %}<strong class="text-danger"> Fix errors before importing.</strong>{% endif %}
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+    <table class="table table-sm small mb-0">
+      <thead>
+        <tr>
+          <th>#</th><th>Status</th>
+          <th>DC Code</th><th>Name</th><th>Row</th><th>Rack #</th><th>Notes</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in preview %}
+      <tr class="{% if r._status == 'error' %}table-danger{% elif r._status == 'skip' %}table-warning{% endif %}">
+        <td>{{ r._row }}</td>
+        <td>
+          {% if r._status == 'ok' %}<span class="badge bg-success">OK</span>
+          {% elif r._status == 'skip' %}<span class="badge bg-warning text-dark">Skip</span>
+          {% else %}<span class="badge bg-danger">Error</span>{% endif %}
+        </td>
+        <td class="mono">{{ r.datacenter_code or '—' }}</td>
+        <td class="mono">{{ r.name or '—' }}</td>
+        <td>{{ r.row_label or '—' }}</td>
+        <td>{{ r.rack_number or '—' }}</td>
+        <td class="text-muted">{{ r.notes or '' }}</td>
+        <td class="text-muted small">{{ r._reason }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+{% if err_count == 0 and ok_count > 0 %}
+<form method="post">
+  <input type="hidden" name="raw_json" value="{{ raw_json | e }}">
+  <input type="hidden" name="confirmed" value="1">
+  <button type="submit" class="btn cc-btn-primary btn-sm">
+    <i class="bi bi-check-circle me-1"></i>Confirm Import ({{ ok_count }} rack{{ 's' if ok_count != 1 }})
+  </button>
+  <a href="/inventory/racks/import" class="btn btn-outline-secondary btn-sm ms-2">Cancel</a>
+</form>
+{% else %}
+<a href="/inventory/racks/import" class="btn btn-outline-secondary btn-sm">Try Again</a>
+{% endif %}
+
+{# ── Upload state (initial form) ─────────────────────────────────────────── #}
+{% else %}
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">Upload Rack CSV</div>
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      CSV columns (in order):
+      <span class="mono small">datacenter_code, name, row_label, rack_number, notes</span>
+      <br>Datacenter code must match an existing datacenter.
+    </p>
+    <form method="post" enctype="multipart/form-data">
+      {% if prefill_dc %}
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">Datacenter Code (pre-fill)</label>
+        <input type="text" class="form-control form-control-sm mono" value="{{ prefill_dc }}" readonly>
+      </div>
+      {% endif %}
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">CSV File <span class="text-danger">*</span></label>
+        <input type="file" class="form-control" name="file" accept=".csv,.txt" required>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn cc-btn-primary btn-sm">
+          <i class="bi bi-search me-1"></i>Preview
+        </button>
+        <a href="/inventory" class="btn btn-outline-secondary btn-sm">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endif %}
+{% endblock %}

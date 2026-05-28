@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Import Devices — CrossConnect{% endblock %}
+{% block content %}
+<div class="mb-3 small">
+  <a href="/inventory" class="text-muted text-decoration-none"><i class="bi bi-chevron-left me-1"></i>Inventory</a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="fw-bold mb-0"><i class="bi bi-server me-2 text-primary"></i>Import Devices</h4>
+  <a href="/inventory/devices/import-template" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-download me-1"></i>Download Template
+  </a>
+</div>
+
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
+{# ── Result state ─────────────────────────────────────────────────────────── #}
+{% if result %}
+<div class="alert {% if result.skipped|length %}alert-warning{% else %}alert-success{% endif %}">
+  <strong>{{ result.created }} device(s) created.</strong>
+  {% if result.skipped|length %}
+    {{ result.skipped|length }} row(s) skipped.
+  {% endif %}
+</div>
+{% if result.skipped %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header py-2 small fw-semibold">Skipped rows</div>
+  <div class="card-body p-0">
+    <table class="table table-sm small mb-0">
+      <thead><tr><th>Row</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for s in result.skipped %}
+        <tr><td>{{ s.row }}</td><td class="text-warning">{{ s.reason }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+<a href="/inventory" class="btn btn-outline-secondary btn-sm">Back to Inventory</a>
+<a href="/inventory/devices/import" class="btn cc-btn-primary btn-sm ms-2">Import More</a>
+
+{# ── Preview state ─────────────────────────────────────────────────────────── #}
+{% elif preview %}
+{% set ok_count   = preview | selectattr('_status', 'equalto', 'ok')    | list | length %}
+{% set skip_count = preview | selectattr('_status', 'equalto', 'skip')  | list | length %}
+{% set err_count  = preview | selectattr('_status', 'equalto', 'error') | list | length %}
+{% set warn_rows  = preview | selectattr('_warn')                        | list %}
+
+<div class="alert alert-info small py-2 mb-3">
+  <strong>Preview:</strong> {{ ok_count }} to create &nbsp;·&nbsp;
+  {{ skip_count }} to skip &nbsp;·&nbsp;
+  {{ err_count }} error(s).
+  {% if warn_rows|length %}<span class="text-warning ms-2"><i class="bi bi-exclamation-triangle me-1"></i>{{ warn_rows|length }} warning(s) — will import without device type.</span>{% endif %}
+  {% if err_count %}<strong class="text-danger"> Fix errors before importing.</strong>{% endif %}
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+    <table class="table table-sm small mb-0">
+      <thead>
+        <tr>
+          <th>#</th><th>Status</th>
+          <th>DC</th><th>Rack</th><th>U</th>
+          <th>Device Name</th><th>Serial</th>
+          <th>System</th><th>Node</th><th>Type Model</th><th>Notes</th>
+          <th>Info</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in preview %}
+      <tr class="{% if r._status == 'error' %}table-danger{% elif r._status == 'skip' %}table-warning{% endif %}">
+        <td>{{ r._row }}</td>
+        <td>
+          {% if r._status == 'ok' %}
+            {% if r._warn %}
+              <span class="badge bg-warning text-dark" title="{{ r._warn }}">⚠ OK</span>
+            {% else %}
+              <span class="badge bg-success">OK</span>
+            {% endif %}
+          {% elif r._status == 'skip' %}<span class="badge bg-warning text-dark">Skip</span>
+          {% else %}<span class="badge bg-danger">Error</span>{% endif %}
+        </td>
+        <td class="mono">{{ r.datacenter_code or '—' }}</td>
+        <td class="mono">{{ r.rack_name or '—' }}</td>
+        <td class="mono">{{ r.starting_ru or '—' }}</td>
+        <td class="mono fw-semibold">{{ r.device_name or '—' }}</td>
+        <td class="mono text-muted">{{ r.serial or '—' }}</td>
+        <td>{{ r.system_name or '—' }}</td>
+        <td>{{ r.node_label or '—' }}</td>
+        <td class="text-muted">{{ r.device_type_model or '—' }}</td>
+        <td class="text-muted small">{{ r.notes or '' }}</td>
+        <td class="small text-muted">{{ r._reason or r._warn or '' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+{% if err_count == 0 and ok_count > 0 %}
+<form method="post">
+  <input type="hidden" name="raw_json" value="{{ raw_json | e }}">
+  <input type="hidden" name="confirmed" value="1">
+  <button type="submit" class="btn cc-btn-primary btn-sm">
+    <i class="bi bi-check-circle me-1"></i>Confirm Import ({{ ok_count }} device{{ 's' if ok_count != 1 }})
+  </button>
+  <a href="/inventory/devices/import" class="btn btn-outline-secondary btn-sm ms-2">Cancel</a>
+</form>
+{% else %}
+<a href="/inventory/devices/import" class="btn btn-outline-secondary btn-sm">Try Again</a>
+{% endif %}
+
+{# ── Upload state ──────────────────────────────────────────────────────────── #}
+{% else %}
+<div class="row justify-content-center">
+<div class="col-lg-6">
+<div class="card border-0 shadow-sm">
+  <div class="card-header py-2 fw-semibold">Upload Device CSV</div>
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      CSV columns (in order):
+      <span class="mono small">datacenter_code, rack_name, starting_ru, device_name, serial, system_name, node_label, device_type_model, notes</span>
+      <br>
+      <span class="text-muted">Unknown systems are auto-created as stubs.
+      Unknown device types are flagged but do not block the import.</span>
+    </p>
+    <form method="post" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">CSV File <span class="text-danger">*</span></label>
+        <input type="file" class="form-control" name="file" accept=".csv,.txt" required>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn cc-btn-primary btn-sm">
+          <i class="bi bi-search me-1"></i>Preview
+        </button>
+        <a href="/inventory" class="btn btn-outline-secondary btn-sm">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+</div>
+{% endif %}
+{% endblock %}
