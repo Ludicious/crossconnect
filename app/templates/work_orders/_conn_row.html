@@ -3,6 +3,11 @@
     class="conn-row {% if c.fabric == 'A' %}fabric-a{% elif c.fabric == 'B' %}fabric-b{% endif %}"
     data-id="{{ c.id }}" data-dirty="false">
 
+  {# Row select checkbox #}
+  <td class="td-cb" style="width:24px;padding:4px 2px;vertical-align:middle">
+    <input type="checkbox" class="row-cb form-check-input" onchange="updateBulkToolbar()">
+  </td>
+
   {# Action #}
   <td class="td-device">
     {% if can_edit | default(false) %}
@@ -114,6 +119,10 @@
   {# Row actions #}
   <td class="text-end" style="white-space:nowrap">
     {% if can_edit | default(false) %}
+    <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="Duplicate row"
+            onclick="duplicateRow(this)">
+      <i class="bi bi-copy" style="font-size:.75rem"></i>
+    </button>
     <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete row"
             onclick="deleteRow({{ c.id }}, this)">
       <i class="bi bi-trash" style="font-size:.75rem"></i>

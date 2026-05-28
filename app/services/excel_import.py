@@ -106,6 +106,11 @@ def generate_template() -> bytes:
         cell.alignment = Alignment(horizontal="center")
         ws.column_dimensions[cell.column_letter].width = max(12, len(header) + 2)
 
+    # Force VLAN_VSAN column to text format so Excel preserves comma-separated
+    # values like "100,101" instead of coercing them to integer 100101.
+    _vlan_col_letter = ws.cell(row=1, column=CANONICAL_HEADERS.index('VLAN_VSAN') + 1).column_letter
+    ws.column_dimensions[_vlan_col_letter].number_format = '@'
+
     dv_action = DataValidation(
         type="list",
         formula1='"ADD,REMOVE,MOVE,CONFIRM"',

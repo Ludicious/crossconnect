@@ -64,6 +64,7 @@ function buildEmptyRow() {
 
   return `
 <tr class="conn-row row-dirty" id="newrow-${seq}" data-id="new" data-seq="${seq}" data-dirty="true">
+  <td class="td-cb" style="width:24px;padding:4px 2px;vertical-align:middle"><input type="checkbox" class="row-cb form-check-input" onchange="updateBulkToolbar()"></td>
   <td class="td-device"><select class="grid-select conn-field" data-field="action" onchange="markDirty(this)">${actionOpts}</select></td>
   <td class="td-device"><select class="grid-select conn-field" data-field="fabric" onchange="markDirty(this);updateFabricTint(this)">${fabricOpts}</select></td>
   <td class="td-device"><select class="grid-select conn-field" data-field="purpose" onchange="markDirty(this)">${purposeOpts}</select></td>
@@ -105,7 +106,11 @@ function buildEmptyRow() {
   <td><select class="grid-select conn-field" data-field="install_status" onchange="markDirty(this)">${statusOpts}</select></td>
   <td><input class="grid-input conn-field" data-field="install_notes" oninput="markDirty(this)"></td>
   <td class="row-error-cell text-danger" style="white-space:nowrap;min-width:20px" title=""></td>
-  <td class="text-end">
+  <td class="text-end" style="white-space:nowrap">
+    <button class="btn btn-outline-secondary btn-sm py-0 px-1 me-1" title="Duplicate row"
+            onclick="duplicateRow(this)">
+      <i class="bi bi-copy" style="font-size:.75rem"></i>
+    </button>
     <button class="btn btn-outline-secondary btn-sm py-0 px-1" title="Remove unsaved row"
             onclick="removeNewRow(this)">
       <i class="bi bi-x-lg" style="font-size:.75rem"></i>
@@ -772,3 +777,197 @@ window.addEventListener('resize', () => {
 document.addEventListener('DOMContentLoaded', attachGridAutocomplete);
 
 // autocomplete is now attached inside addRows() directly
+
+// ── Track last interacted row (for Dup × N) ──────────────────────────────
+let _lastInteractedRow = null;
+document.addEventListener('focusin', e => {
+  const row = e.target.closest('tr.conn-row');
+  if (row) _lastInteractedRow = row;
+});
+
+// ── Port auto-increment ───────────────────────────────────────────────────
+function _incrementPort(val) {
+  if (!val) return val;
+  const m = val.match(/^(.*?)(\d+)$/);
+  if (!m) return val;
+  return m[1] + (parseInt(m[2], 10) + 1);
+}
+
+// ── Duplicate a single row ────────────────────────────────────────────────
+const _PORT_INC  = ['device_port','switch_port','device_patch_port','switch_patch_port'];
+const _INT_INC   = ['lag_member_index'];
+
+function duplicateRow(btn) {
+  const srcRow = btn.closest('tr');
+  const tbody  = document.getElementById('conn-body');
+
+  // Capture current field values
+  const vals = {};
+  srcRow.querySelectorAll('.conn-field').forEach(el => {
+    vals[el.dataset.field] = el.value;
+  });
+
+  // Increment port fields
+  _PORT_INC.forEach(f => { if (vals[f]) vals[f] = _incrementPort(vals[f]); });
+  _INT_INC.forEach(f => {
+    const v = parseInt(vals[f], 10);
+    if (!isNaN(v)) vals[f] = String(v + 1);
+  });
+
+  // Build empty row and insert
+  tbody.insertAdjacentHTML('beforeend', buildEmptyRow());
+  const newRow = tbody.lastElementChild;
+
+  // Fill values
+  newRow.querySelectorAll('.conn-field').forEach(el => {
+    if (vals[el.dataset.field] !== undefined) el.value = vals[el.dataset.field];
+  });
+
+  // Fabric tint
+  const fabricEl = newRow.querySelector('[data-field="fabric"]');
+  if (fabricEl) updateFabricTint(fabricEl);
+
+  // Already marked dirty by buildEmptyRow; ensure save btn enabled
+  document.getElementById('save-btn').disabled = false;
+
+  setTimeout(() => _attachRowAutocomplete(newRow), 0);
+  newRow.scrollIntoView({ block: 'nearest' });
+}
+
+// ── Duplicate last interacted row × N ────────────────────────────────────
+function _duplicateRowDirect(srcRow) {
+  // Like duplicateRow(btn) but takes the <tr> directly
+  const fakeBtn = { closest: () => srcRow };
+  duplicateRow(fakeBtn);
+}
+
+function duplicateLast() {
+  const n = Math.min(24, Math.max(1, parseInt(document.getElementById('dup-n')?.value, 10) || 4));
+  if (!_lastInteractedRow) {
+    const rows = document.querySelectorAll('tr.conn-row');
+    if (!rows.length) { showToast('No rows to duplicate', 'warning'); return; }
+    _lastInteractedRow = rows[rows.length - 1];
+  }
+  for (let i = 0; i < n; i++) _duplicateRowDirect(_lastInteractedRow);
+}
+
+// ── Checkbox / bulk selection ─────────────────────────────────────────────
+function updateBulkToolbar() {
+  const checked    = document.querySelectorAll('.row-cb:checked');
+  const allCbs     = document.querySelectorAll('.row-cb');
+  const bar        = document.getElementById('bulk-edit-bar');
+  const countEl    = document.getElementById('bulk-selected-count');
+  const selectAll  = document.getElementById('select-all-cb');
+
+  if (bar) bar.classList.toggle('d-none', checked.length === 0);
+  if (countEl) countEl.textContent = `${checked.length} row${checked.length === 1 ? '' : 's'} selected`;
+  if (selectAll) {
+    selectAll.indeterminate = checked.length > 0 && checked.length < allCbs.length;
+    selectAll.checked = checked.length > 0 && checked.length === allCbs.length;
+  }
+}
+
+function selectAllRows(cb) {
+  document.querySelectorAll('.row-cb').forEach(el => { el.checked = cb.checked; });
+  updateBulkToolbar();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.row-cb').forEach(el => { el.checked = false; });
+  updateBulkToolbar();
+}
+
+// ── Bulk field apply ──────────────────────────────────────────────────────
+function applyBulkEdit() {
+  const field = document.getElementById('bulk-field-select')?.value || '';
+  const value = document.getElementById('bulk-value-input')?.value ?? '';
+
+  if (!field) { showToast('Select a field first', 'warning'); return; }
+
+  // Validate against known value sets for enum fields
+  const knownSets = {
+    action:         new Set(typeof ACTIONS !== 'undefined' ? ACTIONS : []),
+    cable_type:     new Set(typeof CABLE_TYPES !== 'undefined' ? CABLE_TYPES : []),
+    purpose:        new Set(typeof PURPOSES !== 'undefined' ? PURPOSES : []),
+    fabric:         new Set(typeof FABRICS !== 'undefined' ? FABRICS : []),
+    fiber_mode:     new Set(['', 'singlemode', 'multimode']),
+    install_status: new Set(typeof INSTALL_STATUSES !== 'undefined' ? INSTALL_STATUSES : []),
+  };
+  if (knownSets[field] && !knownSets[field].has(value)) {
+    showToast(`"${value}" is not a valid value for ${field}`, 'warning');
+    return;
+  }
+
+  const checked = document.querySelectorAll('.row-cb:checked');
+  if (!checked.length) return;
+
+  checked.forEach(cb => {
+    const row = cb.closest('tr');
+    const el  = row?.querySelector(`[data-field="${field}"]`);
+    if (el) {
+      el.value = value;
+      markDirty(el);
+      if (field === 'fabric') updateFabricTint(el);
+    }
+  });
+
+  showToast(`Applied "${value}" to ${checked.length} row(s)`, 'success');
+}
+
+// ── Client-side filter / search ───────────────────────────────────────────
+const _FILTER_FIELDS = [
+  'system_name_raw','device_name_raw','switch_name_raw',
+  'device_rack_name_raw','switch_rack_name_raw',
+  'device_port','switch_port','device_slot','switch_slot',
+];
+
+function applyFilters() {
+  const text   = (document.getElementById('filter-text')?.value  || '').trim().toLowerCase();
+  const action = (document.getElementById('filter-action')?.value || '');
+  const status = (document.getElementById('filter-status')?.value || '');
+
+  const hasFilter = text || action || status;
+  document.getElementById('filter-clear-link')?.classList.toggle('d-none', !hasFilter);
+
+  document.querySelectorAll('tr.conn-row').forEach(row => {
+    // Never hide unsaved / dirty rows
+    if (row.dataset.dirty === 'true' || row.dataset.id === 'new') {
+      row.style.display = '';
+      return;
+    }
+
+    let show = true;
+
+    if (text) {
+      const rowText = _FILTER_FIELDS
+        .map(f => (row.querySelector(`[data-field="${f}"]`)?.value || '').toLowerCase())
+        .join(' ');
+      if (!rowText.includes(text)) show = false;
+    }
+
+    if (action && show) {
+      const el  = row.querySelector('[data-field="action"]');
+      const val = (el?.value || el?.textContent || '').trim();
+      if (val !== action) show = false;
+    }
+
+    if (status && show) {
+      const el  = row.querySelector('[data-field="install_status"]');
+      const val = (el?.value || '').trim();
+      if (val !== status) show = false;
+    }
+
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+function clearFilters() {
+  const t = document.getElementById('filter-text');
+  const a = document.getElementById('filter-action');
+  const s = document.getElementById('filter-status');
+  if (t) t.value = '';
+  if (a) a.value = '';
+  if (s) s.value = '';
+  document.getElementById('filter-clear-link')?.classList.add('d-none');
+  document.querySelectorAll('tr.conn-row').forEach(r => { r.style.display = ''; });
+}

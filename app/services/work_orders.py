@@ -2,7 +2,10 @@
 Work order and connection service.
 All business rules enforced here; routers only handle HTTP concerns.
 """
+import logging
 from datetime import date, datetime
+
+_log = logging.getLogger(__name__)
 from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
@@ -250,6 +253,17 @@ def _check_device_port_warning(db: Session, conn: Connection,
     return None
 
 
+def _coerce_vlan(val) -> Optional[str]:
+    """Return the VLAN/VSAN string, logging a warning if it looks like Excel
+    collapsed a comma-separated list (e.g. "100,101" → integer 100101)."""
+    s = str(val).strip() if val is not None else ""
+    if not s:
+        return None
+    if s.isdigit() and len(s) > 6:
+        _log.warning("Probable collapsed VLAN/VSAN value '%s' — Excel may have coerced a comma-separated list to integer", s)
+    return s
+
+
 def _conn_from_form(data: dict) -> dict:
     """Coerce form dict to connection field dict."""
     def _s(v):
@@ -292,7 +306,7 @@ def _conn_from_form(data: dict) -> dict:
         switch_rack_u=_int(data.get("switch_rack_u")),
         switch_slot=data.get("switch_slot", "").strip() or None,
         switch_port=data.get("switch_port", "").strip() or None,
-        vlan_vsan=data.get("vlan_vsan", "").strip() or None,
+        vlan_vsan=_coerce_vlan(data.get("vlan_vsan", "")),
         comments=data.get("comments", "").strip() or None,
         lag_id=data.get("lag_id", "").strip() or None,
         lag_member_index=_int(data.get("lag_member_index")),
@@ -312,6 +326,12 @@ def create_connection(db: Session, wo_id: int, form_data: dict,
 
     hard_errors = []
     warnings = []
+    _vv = fields.get('vlan_vsan') or ''
+    if _vv.isdigit() and len(_vv) > 6:
+        warnings.append(
+            f"VLAN/VSAN '{_vv}' looks like a collapsed comma-separated list "
+            f"(Excel coerced to integer). Verify source data."
+        )
 
     dup = _check_switch_port_duplicate(db, conn)
     if dup:
@@ -349,6 +369,12 @@ def update_connection(db: Session, conn: Connection, form_data: dict,
 
     hard_errors = []
     warnings = []
+    _vv = fields.get('vlan_vsan') or ''
+    if _vv.isdigit() and len(_vv) > 6:
+        warnings.append(
+            f"VLAN/VSAN '{_vv}' looks like a collapsed comma-separated list "
+            f"(Excel coerced to integer). Verify source data."
+        )
 
     dup = _check_switch_port_duplicate(db, conn, exclude_id=conn.id)
     if dup:
@@ -375,13 +401,16 @@ def bulk_create_connections(db: Session, wo_id: int, rows: list[dict],
     """
     created = 0
     skipped = []
+    all_warnings = []
     for i, row in enumerate(rows):
-        conn, errors, _ = create_connection(db, wo_id, row, created_by)
+        conn, errors, row_warnings = create_connection(db, wo_id, row, created_by)
         if errors:
             skipped.append({"row": i + 1, "errors": errors})
         else:
             created += 1
-    return {"created": created, "skipped": skipped}
+            if row_warnings:
+                all_warnings.extend([f"Row {i+1}: {w}" for w in row_warnings])
+    return {"created": created, "skipped": skipped, "warnings": all_warnings}
 
 
 def soft_delete_connection(db: Session, conn: Connection, user_id: int) -> None:
