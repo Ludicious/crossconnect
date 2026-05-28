@@ -237,7 +237,8 @@ async def device_new(rack_id: int, request: Request, user=Depends(get_current_us
 async def device_create(
     rack_id: int, request: Request,
     name: str = Form(...), serial: str = Form(""),
-    system_id: Optional[int] = Form(None), starting_ru: Optional[int] = Form(None),
+    system_id: Optional[int] = Form(None), node_label: str = Form(""),
+    starting_ru: Optional[int] = Form(None),
     device_type_id: Optional[int] = Form(None),
     parent_device_id: Optional[int] = Form(None),
     slot_number: Optional[int] = Form(None),
@@ -250,6 +251,7 @@ async def device_create(
         raise HTTPException(404)
     try:
         svc.create_device(db, rack_id=rack_id, name=name, system_id=system_id or None,
+                          node_label=node_label or None,
                           serial=serial, starting_ru=starting_ru,
                           device_type_id=device_type_id or None,
                           parent_device_id=parent_device_id or None,
@@ -276,7 +278,8 @@ async def device_edit(device_id: int, request: Request, user=Depends(get_current
 async def device_update(
     device_id: int, request: Request,
     name: str = Form(...), serial: str = Form(""),
-    system_id: Optional[int] = Form(None), starting_ru: Optional[int] = Form(None),
+    system_id: Optional[int] = Form(None), node_label: str = Form(""),
+    starting_ru: Optional[int] = Form(None),
     device_type_id: Optional[int] = Form(None),
     parent_device_id: Optional[int] = Form(None),
     slot_number: Optional[int] = Form(None),
@@ -288,7 +291,8 @@ async def device_update(
     if not device:
         raise HTTPException(404)
     svc.update_device(db, device, user_id=user.id, name=name, serial=serial,
-                      system_id=system_id or None, starting_ru=starting_ru,
+                      system_id=system_id or None, node_label=node_label or None,
+                      starting_ru=starting_ru,
                       device_type_id=device_type_id or None,
                       parent_device_id=parent_device_id or None,
                       slot_number=slot_number, notes=notes)
@@ -429,7 +433,7 @@ async def system_new(request: Request, user=Depends(get_current_user), db: Sessi
 @router.post("/systems/new")
 async def system_create(
     request: Request,
-    name: str = Form(...), system_type: str = Form("server"), notes: str = Form(""),
+    name: str = Form(...), system_type: str = Form(""), notes: str = Form(""),
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     _arch_or_admin(request, db)
@@ -462,7 +466,7 @@ async def system_edit(system_id: int, request: Request, user=Depends(get_current
 @router.post("/systems/{system_id}/edit")
 async def system_update(
     system_id: int, request: Request,
-    name: str = Form(...), system_type: str = Form("server"), notes: str = Form(""),
+    name: str = Form(...), system_type: str = Form(""), notes: str = Form(""),
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     _arch_or_admin(request, db)
@@ -634,4 +638,5 @@ async def device_detail_json(device_id: int, db: Session = Depends(get_db),
         "id": d.id, "name": d.name, "serial": d.serial or "",
         "rack": d.rack.name, "rack_u": d.starting_ru,
         "system": d.system.name if d.system else "",
+        "node_label": d.node_label or "",
     }

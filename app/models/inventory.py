@@ -101,7 +101,7 @@ class System(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
-    system_type: Mapped[str] = mapped_column(String(32), default="server")
+    system_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -114,6 +114,7 @@ class Device(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     system_id: Mapped[Optional[int]] = mapped_column(ForeignKey("systems.id"), nullable=True)
+    node_label: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     rack_id: Mapped[int] = mapped_column(ForeignKey("racks.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     serial: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

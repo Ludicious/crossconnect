@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — Admin — CrossConnect{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2><i class="bi bi-journal-text me-2"></i>Audit Log</h2>
+  <span class="text-muted small">Showing up to 500 most recent entries</span>
+</div>
+
+<!-- Filter bar -->
+<form method="get" class="card border-0 shadow-sm mb-4">
+  <div class="card-body py-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold mb-1">Entity Type</label>
+        <select class="form-select form-select-sm" name="entity_type">
+          <option value="">All</option>
+          {% for t in distinct_entity_types %}
+          <option value="{{ t }}" {% if filter_entity_type == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold mb-1">Action</label>
+        <select class="form-select form-select-sm" name="action">
+          <option value="">All</option>
+          {% for a in distinct_actions %}
+          <option value="{{ a }}" {% if filter_action == a %}selected{% endif %}>{{ a }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold mb-1">User</label>
+        <select class="form-select form-select-sm" name="user_id">
+          <option value="">All</option>
+          {% for u in all_users %}
+          <option value="{{ u.id }}" {% if filter_user_id == u.id %}selected{% endif %}>{{ u.display_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button type="submit" class="btn cc-btn-primary btn-sm">Filter</button>
+        <a href="/admin/audit-log" class="btn btn-outline-secondary btn-sm">Clear</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- Results table -->
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    {% if entries %}
+    <div class="table-responsive">
+    <table class="table table-hover mb-0 small">
+      <thead>
+        <tr>
+          <th style="white-space:nowrap">Timestamp</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>Entity Type</th>
+          <th>Entity ID</th>
+          <th>Field</th>
+          <th>Old Value</th>
+          <th>New Value</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for e in entries %}
+      <tr>
+        <td class="mono text-muted" style="white-space:nowrap">{{ e.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ e.user.display_name if e.user else '<span class="text-muted fst-italic">system</span>'|safe }}</td>
+        <td>
+          {% if e.action == 'create' %}<span class="badge bg-success">{{ e.action }}</span>
+          {% elif e.action == 'delete' %}<span class="badge bg-danger">{{ e.action }}</span>
+          {% elif e.action == 'update' %}<span class="badge bg-primary">{{ e.action }}</span>
+          {% else %}<span class="badge bg-secondary">{{ e.action }}</span>{% endif %}
+        </td>
+        <td class="mono">{{ e.entity_type }}</td>
+        <td class="mono text-muted">{{ e.entity_id or '—' }}</td>
+        <td class="mono text-muted">{{ e.field_name or '—' }}</td>
+        <td class="mono text-muted"
+            {% if e.old_value and e.old_value|length > 40 %}title="{{ e.old_value }}"{% endif %}>
+          {% if e.old_value %}{{ e.old_value[:40] }}{% if e.old_value|length > 40 %}…{% endif %}{% else %}—{% endif %}
+        </td>
+        <td class="mono text-muted"
+            {% if e.new_value and e.new_value|length > 40 %}title="{{ e.new_value }}"{% endif %}>
+          {% if e.new_value %}{{ e.new_value[:40] }}{% if e.new_value|length > 40 %}…{% endif %}{% else %}—{% endif %}
+        </td>
+        <td class="text-muted">{{ e.detail or '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted small p-4 mb-0 text-center">No audit entries yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

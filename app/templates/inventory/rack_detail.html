@@ -50,7 +50,15 @@
           <tbody>
           {% for d in (rack.devices | selectattr('starting_ru') | sort(attribute='starting_ru') | list) + (rack.devices | rejectattr('starting_ru') | list) %}
           <tr>
-            <td class="mono">{{ d.name }}</td>
+            <td class="mono">
+              {{ d.name }}
+              {% if d.system and d.node_label %}
+                <span class="text-muted fw-normal small"> ({{ d.system.name }} / {{ d.node_label }})</span>
+              {% endif %}
+              {% if not d.device_type %}
+                <span class="badge bg-warning text-dark ms-1">⚠ No type</span>
+              {% endif %}
+            </td>
             <td class="text-muted">
               {% if d.system %}<a href="/inventory/systems/{{ d.system.id }}" class="text-decoration-none text-muted">{{ d.system.name }}</a>
               {% else %}<span class="text-muted fst-italic">standalone</span>{% endif %}

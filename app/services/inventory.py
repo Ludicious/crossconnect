@@ -180,11 +180,11 @@ def get_system(db: Session, system_id: int) -> Optional[System]:
     ).filter(System.id == system_id).first()
 
 
-def create_system(db: Session, name: str, system_type: str = "server",
+def create_system(db: Session, name: str, system_type: str = "",
                   notes: str = "", user_id: Optional[int] = None) -> System:
     if db.query(System).filter(func.lower(System.name) == name.lower()).first():
         raise ValueError(f"System named '{name}' already exists.")
-    s = System(name=name, system_type=system_type, notes=notes or None)
+    s = System(name=name, system_type=system_type or None, notes=notes or None)
     db.add(s)
     db.flush()
     write_audit(db, user_id, "wide", "system", s.id, "create",
@@ -203,7 +203,7 @@ def update_system(db: Session, system: System, user_id: Optional[int] = None,
         ).first():
             raise ValueError(f"System named '{kwargs['name']}' already exists.")
     for k, v in kwargs.items():
-        setattr(system, k, v or None if k == "notes" else v)
+        setattr(system, k, v or None if k in ("notes", "system_type") else v)
     write_audit(db, user_id, "wide", "system", system.id, "update",
                 detail=f"{system.name}")
     db.commit()
@@ -241,12 +241,14 @@ def get_device(db: Session, device_id: int) -> Optional[Device]:
 
 def create_device(db: Session, rack_id: int, name: str,
                   system_id: Optional[int] = None,
+                  node_label: Optional[str] = None,
                   serial: str = "", starting_ru: Optional[int] = None,
                   device_type_id: Optional[int] = None,
                   parent_device_id: Optional[int] = None,
                   slot_number: Optional[int] = None,
                   notes: str = "", user_id: Optional[int] = None) -> Device:
     d = Device(rack_id=rack_id, name=name, system_id=system_id,
+               node_label=node_label or None,
                serial=serial or None, starting_ru=starting_ru,
                device_type_id=device_type_id, parent_device_id=parent_device_id,
                slot_number=slot_number, notes=notes or None)
@@ -262,7 +264,7 @@ def create_device(db: Session, rack_id: int, name: str,
 def update_device(db: Session, device: Device, user_id: Optional[int] = None,
                   **kwargs) -> Device:
     for k, v in kwargs.items():
-        setattr(device, k, v or None if k in ("serial", "notes") else v)
+        setattr(device, k, v or None if k in ("serial", "notes", "node_label") else v)
     write_audit(db, user_id, "wide", "device", device.id, "update",
                 detail=f"{device.name} rack_id={device.rack_id}")
     db.commit()
@@ -401,7 +403,8 @@ def autocomplete_devices(db: Session, q: str, rack_id: Optional[int] = None, lim
     return [{"id": r.id, "label": r.name, "name": r.name,
              "serial": r.serial or "", "rack": r.rack.name,
              "rack_u": r.starting_ru,
-             "system": r.system.name if r.system else ""} for r in rows]
+             "system": r.system.name if r.system else "",
+             "node_label": r.node_label or ""} for r in rows]
 
 
 def autocomplete_switches(db: Session, q: str, role: Optional[str] = None, limit: int = 10) -> list[dict]:

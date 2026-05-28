@@ -10,7 +10,13 @@
 <div class="d-flex justify-content-between align-items-start mb-3">
   <div>
     <h4 class="fw-bold mb-0 mono">{{ system.name }}
-      <span class="badge bg-secondary ms-1">{{ system.system_type }}</span>
+      {% if system.system_type == 'cluster' %}
+        <span class="badge bg-primary ms-1">Cluster</span>
+      {% elif system.system_type == 'ha_pair' %}
+        <span class="badge bg-success ms-1">HA Pair</span>
+      {% elif system.system_type == 'standalone' %}
+        <span class="badge bg-secondary ms-1">Standalone</span>
+      {% endif %}
     </h4>
     {% if system.notes %}<p class="text-muted small mb-0 mt-1">{{ system.notes }}</p>{% endif %}
   </div>
@@ -34,7 +40,10 @@
       <tbody>
       {% for d in system.devices | sort(attribute='name') %}
       <tr>
-        <td class="mono">{{ d.name }}</td>
+        <td class="mono">
+          {{ d.name }}
+          {% if d.node_label %}<span class="text-muted fw-normal small"> / {{ d.node_label }}</span>{% endif %}
+        </td>
         <td><a href="/inventory/racks/{{ d.rack.id }}" class="text-decoration-none mono text-muted">{{ d.rack.name }}</a></td>
         <td class="text-muted">{{ d.rack.datacenter.code if d.rack.datacenter else '—' }}</td>
         <td class="mono">{{ d.starting_ru or '—' }}</td>

@@ -45,6 +45,14 @@
           </div>
         </div>
         <div class="col-12">
+          <label class="form-label small fw-semibold">Node Label
+            <span class="text-muted fw-normal">(optional — role within system, e.g. "Node A")</span>
+          </label>
+          <input type="text" class="form-control" name="node_label"
+                 value="{{ device.node_label if device and device.node_label else '' }}"
+                 placeholder="Node A">
+        </div>
+        <div class="col-12">
           <label class="form-label small fw-semibold">Device Type
             <span class="text-muted fw-normal">(optional — pre-fills height)</span>
           </label>

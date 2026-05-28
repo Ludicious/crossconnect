@@ -4,6 +4,30 @@ from sqlalchemy import String, Date, DateTime, ForeignKey, func, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
+
+class ConnectionTemplate(Base):
+    """
+    Reusable field-preset for the connection grid.
+    datacenter_id=NULL means global; set means DC-specific.
+    field_presets is a JSON string (e.g. {"purpose":"data","cable_type":"LC_Fiber"}).
+    """
+    __tablename__ = "connection_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    field_presets: Mapped[str] = mapped_column(Text, nullable=False)
+    datacenter_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("datacenters.id"), nullable=True
+    )
+    created_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
 # Valid transitions enforced in service layer, not DB:
 #   draft → issued → in_progress → complete
 #                 ↘ cancelled

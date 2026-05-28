@@ -24,11 +24,14 @@
                  placeholder="e.g. dc1-storage-44">
         </div>
         <div class="col-12">
-          <label class="form-label small fw-semibold">Type</label>
+          <label class="form-label small fw-semibold">System Type
+            <span class="text-muted fw-normal">(informational only)</span>
+          </label>
           <select class="form-select" name="system_type">
-            {% for t in ['server','storage','appliance','other'] %}
-            <option value="{{ t }}" {% if system and system.system_type==t %}selected{% elif not system and t=='server' %}selected{% endif %}>{{ t|capitalize }}</option>
-            {% endfor %}
+            <option value="" {% if not system or not system.system_type %}selected{% endif %}>— (unset)</option>
+            <option value="cluster"    {% if system and system.system_type == 'cluster'    %}selected{% endif %}>Cluster</option>
+            <option value="ha_pair"    {% if system and system.system_type == 'ha_pair'    %}selected{% endif %}>HA Pair</option>
+            <option value="standalone" {% if system and system.system_type == 'standalone' %}selected{% endif %}>Standalone</option>
           </select>
         </div>
         <div class="col-12">

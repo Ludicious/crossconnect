@@ -12,12 +12,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from typing import Optional
 
 from app.config import settings as app_settings
 from app.db import get_db
 from app.routers.auth import get_current_user
 from app.models.user import User
+from app.models.audit import AuditLog
 import app.services.auth as auth_svc
 import app.services.backup as backup_svc
 import app.services.recycle_bin as rb_svc
@@ -398,3 +400,44 @@ async def admin_backup_restore_execute(request: Request,
     except (ValueError, RuntimeError) as e:
         raise HTTPException(400, str(e))
     return RedirectResponse("/admin?restored=1", status_code=302)
+
+
+# ── Audit Log ─────────────────────────────────────────────────────────────
+
+@router.get("/audit-log", response_class=HTMLResponse)
+async def admin_audit_log(
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    entity_type: Optional[str] = None,
+    action: Optional[str] = None,
+    user_id: Optional[int] = None,
+):
+    _require_admin(user)
+    q = db.query(AuditLog).options(joinedload(AuditLog.user))
+    if entity_type:
+        q = q.filter(AuditLog.entity_type == entity_type)
+    if action:
+        q = q.filter(AuditLog.action == action)
+    if user_id:
+        q = q.filter(AuditLog.user_id == user_id)
+    entries = q.order_by(AuditLog.timestamp.desc()).limit(500).all()
+
+    distinct_entity_types = [
+        r[0] for r in db.query(AuditLog.entity_type).distinct().order_by(AuditLog.entity_type).all()
+    ]
+    distinct_actions = [
+        r[0] for r in db.query(AuditLog.action).distinct().order_by(AuditLog.action).all()
+    ]
+    all_users = db.query(User).order_by(User.display_name).all()
+
+    return templates.TemplateResponse(request=request, name="admin/audit_log.html", context={
+        "user": user,
+        "entries": entries,
+        "filter_entity_type": entity_type or "",
+        "filter_action": action or "",
+        "filter_user_id": user_id or "",
+        "distinct_entity_types": distinct_entity_types,
+        "distinct_actions": distinct_actions,
+        "all_users": all_users,
+    })
