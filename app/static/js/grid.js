@@ -852,23 +852,29 @@ function duplicateLast() {
 }
 
 // ── Checkbox / bulk selection ─────────────────────────────────────────────
+// Returns only checkboxes in currently visible rows.
+function _visibleRowCbs() {
+  return [...document.querySelectorAll('tr.conn-row .row-cb')]
+    .filter(cb => cb.closest('tr').style.display !== 'none');
+}
+
 // Called by individual row checkboxes — updates bar + select-all header state.
 // Does NOT write back to selectAll.checked when called from selectAllRows.
 function updateBulkToolbar() {
-  const checked   = document.querySelectorAll('.row-cb:checked');
-  const allCbs    = document.querySelectorAll('.row-cb');
-  const bar       = document.getElementById('bulk-edit-bar');
-  const countEl   = document.getElementById('bulk-selected-count');
-  const selectAll = document.getElementById('select-all-cb');
+  const visibleCbs = _visibleRowCbs();
+  const checked    = visibleCbs.filter(cb => cb.checked);
+  const bar        = document.getElementById('bulk-edit-bar');
+  const countEl    = document.getElementById('bulk-selected-count');
+  const selectAll  = document.getElementById('select-all-cb');
 
   if (bar)     bar.classList.toggle('d-none', checked.length === 0);
   if (countEl) countEl.textContent = `${checked.length} row${checked.length === 1 ? '' : 's'} selected`;
   // Only update select-all header state when individual rows are toggled
   // (selectAllRows manages it directly to avoid feedback loops)
   if (selectAll) {
-    selectAll.indeterminate = checked.length > 0 && checked.length < allCbs.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < visibleCbs.length;
     if (!selectAll._fromSelectAll) {
-      selectAll.checked = checked.length > 0 && checked.length === allCbs.length;
+      selectAll.checked = checked.length > 0 && checked.length === visibleCbs.length;
     }
   }
 }
@@ -876,10 +882,11 @@ function updateBulkToolbar() {
 function selectAllRows(cb) {
   const shouldCheck = cb.checked;
   const selectAll   = document.getElementById('select-all-cb');
+  const visibleCbs  = _visibleRowCbs();
 
   // Guard flag prevents updateBulkToolbar from overwriting the header checkbox
   if (selectAll) selectAll._fromSelectAll = true;
-  document.querySelectorAll('.row-cb').forEach(el => { el.checked = shouldCheck; });
+  visibleCbs.forEach(el => { el.checked = shouldCheck; });
   if (selectAll) {
     selectAll._fromSelectAll = false;
     selectAll.indeterminate = false;
@@ -887,7 +894,7 @@ function selectAllRows(cb) {
   }
 
   // Update bar / count directly
-  const n   = shouldCheck ? document.querySelectorAll('.row-cb').length : 0;
+  const n   = shouldCheck ? visibleCbs.length : 0;
   const bar = document.getElementById('bulk-edit-bar');
   const countEl = document.getElementById('bulk-selected-count');
   if (bar)     bar.classList.toggle('d-none', n === 0);
@@ -922,7 +929,8 @@ function applyBulkEdit() {
     return;
   }
 
-  const checked = document.querySelectorAll('.row-cb:checked');
+  const checked = [...document.querySelectorAll('.row-cb:checked')]
+    .filter(cb => cb.closest('tr').style.display !== 'none');
   if (!checked.length) return;
 
   checked.forEach(cb => {
@@ -994,4 +1002,9 @@ function clearFilters() {
   if (s) s.value = '';
   document.getElementById('filter-clear-link')?.classList.add('d-none');
   document.querySelectorAll('tr.conn-row').forEach(r => { r.style.display = ''; });
+  // Reset stale checkbox state from the previous filter
+  document.querySelectorAll('.row-cb').forEach(cb => { cb.checked = false; });
+  const selectAll = document.getElementById('select-all-cb');
+  if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
+  updateBulkToolbar();
 }
