@@ -13,6 +13,7 @@ import app.services.work_orders as svc
 import app.services.inventory as inv_svc
 from app.services.excel_import import parse_crossconnect_excel, generate_template
 from app.services.pdf_export import generate_work_order_pdf, sanitize_filename as _sanitize
+from app.services.label_export import export_labels_xlsx
 from app.services.audit import write_audit
 from app.models.work_order import VALID_WORK_TYPES
 from app.models.settings import AppSetting
@@ -188,6 +189,28 @@ async def wo_export_pdf(
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Label export ──────────────────────────────────────────────────────────
+
+@router.get("/{wo_id}/export-labels")
+async def wo_export_labels(
+    wo_id: int, request: Request,
+    db: Session = Depends(get_db), user=Depends(get_current_user),
+):
+    from datetime import datetime as _dt
+    wo = svc.get_work_order(db, wo_id)
+    if not wo:
+        raise HTTPException(404)
+    xlsx_bytes = export_labels_xlsx(db, wo_id)
+    date_str = _dt.utcnow().strftime("%Y%m%d")
+    safe_name = _sanitize(wo.name)
+    filename = f"labels-{safe_name}-{date_str}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

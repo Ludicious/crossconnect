@@ -169,6 +169,11 @@ tr.row-dirty td:nth-child(2) { position: relative; padding-left: 14px; }
        title="Download PDF">
       <i class="bi bi-file-pdf me-1"></i>Export PDF
     </a>
+    <!-- Export Labels — visible to all authenticated users -->
+    <a class="btn btn-outline-secondary btn-sm" href="/work-orders/{{ wo.id }}/export-labels"
+       title="Download P-touch label spreadsheet">
+      <i class="bi bi-tag me-1"></i>Export Labels
+    </a>
     <!-- Expand/Collapse toggle -->
     <button class="btn btn-outline-secondary btn-sm" id="expand-btn" onclick="toggleExpand()">
       <i class="bi bi-arrows-expand me-1"></i>Expand Columns
