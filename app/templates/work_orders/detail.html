@@ -351,14 +351,22 @@ tr.row-dirty td:nth-child(2) { position: relative; padding-left: 14px; }
                :class="importResult?.skipped?.length ? 'alert-warning' : 'alert-success'" x-text="importResult?.message"></div>
         </div>
       </div>
-      <div class="modal-footer border-0 pt-0" x-data>
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn cc-btn-primary btn-sm"
-                x-show="document.querySelector('[x-data]')"
-                @click="$dispatch('import-submit')"
-                x-bind:disabled="!preview?.length">
-          <i class="bi bi-upload me-1"></i>Import <span x-text="preview?.length || ''"></span> rows
-        </button>
+      <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center" x-data>
+        <div class="form-check form-check-inline mb-0 small">
+          <input class="form-check-input" type="checkbox" id="csvHydrateCheck" value="1">
+          <label class="form-check-label text-muted" for="csvHydrateCheck">
+            Also add unknown racks, devices, and switches to inventory
+          </label>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn cc-btn-primary btn-sm"
+                  x-show="document.querySelector('[x-data]')"
+                  @click="$dispatch('import-submit')"
+                  x-bind:disabled="!preview?.length">
+            <i class="bi bi-upload me-1"></i>Import <span x-text="preview?.length || ''"></span> rows
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -386,11 +394,19 @@ tr.row-dirty td:nth-child(2) { position: relative; padding-left: 14px; }
         </div>
         <div id="excel-import-result" class="alert small py-2 mt-3 d-none"></div>
       </div>
-      <div class="modal-footer border-0 pt-0">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn cc-btn-primary btn-sm" id="excel-import-btn" onclick="submitExcelImport()">
-          <i class="bi bi-upload me-1"></i>Import
-        </button>
+      <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center">
+        <div class="form-check form-check-inline mb-0 small">
+          <input class="form-check-input" type="checkbox" id="excelHydrateCheck" value="1">
+          <label class="form-check-label text-muted" for="excelHydrateCheck">
+            Also add unknown racks, devices, and switches to inventory
+          </label>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn cc-btn-primary btn-sm" id="excel-import-btn" onclick="submitExcelImport()">
+            <i class="bi bi-upload me-1"></i>Import
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -411,6 +427,9 @@ async function submitExcelImport() {
   }
   const fd = new FormData();
   fd.append('file', input.files[0]);
+  if (document.getElementById('excelHydrateCheck')?.checked) {
+    fd.append('hydrate_inventory', 'true');
+  }
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Importing…';
   try {
@@ -418,7 +437,18 @@ async function submitExcelImport() {
     const data = await resp.json();
     if (resp.ok) {
       resultDiv.className = 'alert alert-success small py-2 mt-3';
-      resultDiv.textContent = data.message || `Imported ${data.created} row(s).`;
+      let msg = data.message || `Imported ${data.created} row(s).`;
+      if (data.hydration) {
+        const h = data.hydration;
+        const parts = [];
+        if (h.racks_created)    parts.push(`${h.racks_created} rack(s)`);
+        if (h.systems_created)  parts.push(`${h.systems_created} system(s)`);
+        if (h.devices_created)  parts.push(`${h.devices_created} device(s)`);
+        if (h.switches_created) parts.push(`${h.switches_created} switch(es)`);
+        if (parts.length) msg += ` Added ${parts.join(', ')} to inventory.`;
+      }
+      if (data.hydration_error) msg += ` (Inventory hydration error: ${data.hydration_error})`;
+      resultDiv.textContent = msg;
       if (data.created > 0) setTimeout(() => location.reload(), 1200);
     } else {
       resultDiv.className = 'alert alert-danger small py-2 mt-3';

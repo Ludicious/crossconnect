@@ -14,6 +14,7 @@ import app.services.inventory as inv_svc
 from app.services.excel_import import parse_crossconnect_excel, generate_template
 from app.services.pdf_export import generate_work_order_pdf, sanitize_filename as _sanitize
 from app.services.label_export import export_labels_xlsx
+from app.services.inventory import hydrate_inventory_from_connections
 from app.services.audit import write_audit
 from app.models.work_order import VALID_WORK_TYPES
 from app.models.settings import AppSetting
@@ -296,7 +297,14 @@ async def conn_bulk(
         raise HTTPException(400, "Work order is not editable")
     body = await request.json()
     rows = body.get("rows", [])
+    hydrate = bool(body.get("hydrate_inventory", False))
     result = svc.bulk_create_connections(db, wo_id, rows, user.id)
+    if hydrate and rows:
+        try:
+            hy = hydrate_inventory_from_connections(db, wo.datacenter_id, rows, user.id)
+            result["hydration"] = hy
+        except Exception as exc:
+            result["hydration_error"] = str(exc)
     return JSONResponse(result)
 
 
@@ -305,6 +313,7 @@ async def conn_import_excel(
     wo_id: int,
     request: Request,
     file: UploadFile = File(...),
+    hydrate_inventory: str = Form(default=""),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -340,6 +349,13 @@ async def conn_import_excel(
         detail=f"WO {wo_id} Excel import: {result.get('created', 0)} created, {len(result.get('skipped', []))} skipped",
     )
     db.commit()
+
+    if hydrate_inventory.lower() in ("true", "1", "on", "yes"):
+        try:
+            hy = hydrate_inventory_from_connections(db, wo.datacenter_id, clean_rows, user.id)
+            result["hydration"] = hy
+        except Exception as exc:
+            result["hydration_error"] = str(exc)
 
     return JSONResponse(result)
 

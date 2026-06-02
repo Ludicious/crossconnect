@@ -429,15 +429,26 @@ function csvImporter() {
     async submit() {
       if (!this.rawRows.length) return;
       const clean = this.rawRows.map(r => { const {_errors,...rest} = r; return rest; });
+      const hydrate = document.getElementById('csvHydrateCheck')?.checked || false;
       try {
         const resp = await fetch(`/work-orders/${WO_ID}/connections/bulk`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({rows: clean}),
+          body: JSON.stringify({rows: clean, hydrate_inventory: hydrate}),
         });
         const json = await resp.json();
-        const msg = `Imported ${json.created} row(s).` +
+        let msg = `Imported ${json.created} row(s).` +
           (json.skipped?.length ? ` ${json.skipped.length} skipped (duplicate switch ports).` : '');
+        if (json.hydration) {
+          const h = json.hydration;
+          const parts = [];
+          if (h.racks_created)    parts.push(`${h.racks_created} rack(s)`);
+          if (h.systems_created)  parts.push(`${h.systems_created} system(s)`);
+          if (h.devices_created)  parts.push(`${h.devices_created} device(s)`);
+          if (h.switches_created) parts.push(`${h.switches_created} switch(es)`);
+          if (parts.length) msg += ` Added ${parts.join(', ')} to inventory.`;
+        }
+        if (json.hydration_error) msg += ` (Inventory hydration error: ${json.hydration_error})`;
         this.importResult = {message: msg, skipped: json.skipped};
         if (json.created > 0) {
           // Reload page to show new rows

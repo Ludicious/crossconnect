@@ -507,6 +507,22 @@ def autocomplete_device_types(db: Session, q: str, category: Optional[str] = Non
 
 # ── CSV Bulk Import helpers ───────────────────────────────────────────────
 
+def get_device_by_name_in_rack(db: Session, rack_id: int, name: str) -> "Optional[Device]":
+    return db.query(Device).filter(
+        Device.rack_id == rack_id,
+        func.lower(Device.name) == name.lower(),
+        Device.deleted_at.is_(None),
+    ).first()
+
+
+def get_switch_by_name_in_rack(db: Session, rack_id: int, name: str) -> "Optional[Switch]":
+    return db.query(Switch).filter(
+        Switch.rack_id == rack_id,
+        func.lower(Switch.name) == name.lower(),
+        Switch.deleted_at.is_(None),
+    ).first()
+
+
 def get_rack_by_name(db: Session, dc_id: int, name: str) -> "Optional[Rack]":
     return db.query(Rack).filter(
         Rack.datacenter_id == dc_id,
@@ -667,6 +683,186 @@ def bulk_create_devices(
             skipped.append({"row": i + 1, "reason": str(exc)})
 
     return {"created": created, "skipped": skipped}
+
+
+def hydrate_inventory_from_connections(
+    db: Session,
+    datacenter_id: int,
+    connection_rows: list[dict],
+    created_by: int,
+) -> dict:
+    """
+    Given parsed connection rows, create any missing inventory records within
+    datacenter_id. Idempotent — never duplicates existing records. Commits once.
+    Skips rows where action == "R".
+    Returns summary: {racks_created, systems_created, devices_created,
+                      switches_created, skipped_existing}.
+    """
+    def _si(v) -> Optional[int]:
+        """Coerce a value to int, None if blank/invalid."""
+        s = _s(v)
+        if not s:
+            return None
+        try:
+            return int(float(s))
+        except (ValueError, TypeError):
+            return None
+
+    active_rows = [r for r in connection_rows if _s(r.get("action", "")).upper() != "R"]
+
+    racks_created = 0
+    systems_created = 0
+    devices_created = 0
+    switches_created = 0
+    skipped_existing = 0
+
+    # ── In-session caches to avoid repeat DB hits ─────────────────────────
+    rack_cache: dict[str, Rack] = {}   # lower(name) → Rack
+    system_cache: dict[str, System] = {}  # lower(name) → System
+
+    def _get_or_create_rack(name_raw: str) -> Optional[Rack]:
+        nonlocal racks_created, skipped_existing
+        name = _s(name_raw)
+        if not name:
+            return None
+        key = name.lower()
+        if key in rack_cache:
+            return rack_cache[key]
+        existing = get_rack_by_name(db, datacenter_id, name)
+        if existing:
+            rack_cache[key] = existing
+            skipped_existing += 1
+            return existing
+        rack = Rack(datacenter_id=datacenter_id, name=name)
+        db.add(rack)
+        db.flush()
+        write_audit(db, created_by, "wide", "rack", rack.id, "create",
+                    detail=f"{rack.name} dc_id={datacenter_id} (hydrated)")
+        rack_cache[key] = rack
+        racks_created += 1
+        return rack
+
+    def _get_or_create_system(name_raw: str) -> Optional[System]:
+        nonlocal systems_created, skipped_existing
+        name = _s(name_raw)
+        if not name:
+            return None
+        key = name.lower()
+        if key in system_cache:
+            return system_cache[key]
+        existing = get_system_by_name(db, name)
+        if existing:
+            system_cache[key] = existing
+            skipped_existing += 1
+            return existing
+        system = System(name=name)
+        db.add(system)
+        db.flush()
+        write_audit(db, created_by, "wide", "system", system.id, "create",
+                    detail=f"{system.name} (hydrated)")
+        system_cache[key] = system
+        systems_created += 1
+        return system
+
+    # ── Pass 1: racks ─────────────────────────────────────────────────────
+    for row in active_rows:
+        for field in ("device_rack_name_raw", "switch_rack_name_raw",
+                      "device_patch_rack_name_raw", "switch_patch_rack_name_raw"):
+            _get_or_create_rack(_s(row.get(field, "")))
+
+    # ── Pass 2: systems ───────────────────────────────────────────────────
+    for row in active_rows:
+        _get_or_create_system(_s(row.get("system_name_raw", "")))
+
+    # ── Pass 3: devices ───────────────────────────────────────────────────
+    seen_devices: set[tuple] = set()
+    for row in active_rows:
+        dev_name = _s(row.get("device_name_raw", ""))
+        rack_name = _s(row.get("device_rack_name_raw", ""))
+        if not dev_name or not rack_name:
+            skipped_existing += 1
+            continue
+        rack = rack_cache.get(rack_name.lower())
+        if not rack:
+            skipped_existing += 1
+            continue
+        key = (rack.id, dev_name.lower())
+        if key in seen_devices:
+            continue
+        seen_devices.add(key)
+        if get_device_by_name_in_rack(db, rack.id, dev_name):
+            skipped_existing += 1
+            continue
+        system = _get_or_create_system(_s(row.get("system_name_raw", "")))
+        device = Device(
+            rack_id=rack.id,
+            name=dev_name,
+            system_id=system.id if system else None,
+            serial=_s(row.get("device_serial", "")) or None,
+            starting_ru=_si(row.get("device_rack_u")),
+        )
+        db.add(device)
+        db.flush()
+        write_audit(db, created_by, "wide", "device", device.id, "create",
+                    detail=f"{device.name} rack_id={rack.id} (hydrated)")
+        devices_created += 1
+
+    # ── Pass 4: switches ──────────────────────────────────────────────────
+    seen_switches: set[tuple] = set()
+    switch_role_map: dict[tuple, str] = {}  # (rack_id, lower_name) → role (first-wins)
+    for row in active_rows:
+        sw_name = _s(row.get("switch_name_raw", ""))
+        rack_name = _s(row.get("switch_rack_name_raw", ""))
+        if not sw_name or not rack_name:
+            continue
+        rack = rack_cache.get(rack_name.lower())
+        if not rack:
+            continue
+        key = (rack.id, sw_name.lower())
+        if key not in switch_role_map:
+            purpose = _s(row.get("purpose", "")).lower()
+            switch_role_map[key] = "SAN" if purpose == "storage" else "LAN"
+
+    for row in active_rows:
+        sw_name = _s(row.get("switch_name_raw", ""))
+        rack_name = _s(row.get("switch_rack_name_raw", ""))
+        if not sw_name or not rack_name:
+            skipped_existing += 1
+            continue
+        rack = rack_cache.get(rack_name.lower())
+        if not rack:
+            skipped_existing += 1
+            continue
+        key = (rack.id, sw_name.lower())
+        if key in seen_switches:
+            continue
+        seen_switches.add(key)
+        if get_switch_by_name_in_rack(db, rack.id, sw_name):
+            skipped_existing += 1
+            continue
+        role = switch_role_map.get(key, "LAN")
+        switch = Switch(
+            rack_id=rack.id,
+            name=sw_name,
+            switch_role=role,
+            serial=_s(row.get("switch_serial", "")) or None,
+            starting_ru=_si(row.get("switch_rack_u")),
+        )
+        db.add(switch)
+        db.flush()
+        write_audit(db, created_by, "wide", "switch", switch.id, "create",
+                    detail=f"{switch.name} role={role} rack_id={rack.id} (hydrated)")
+        switches_created += 1
+
+    db.commit()
+
+    return {
+        "racks_created": racks_created,
+        "systems_created": systems_created,
+        "devices_created": devices_created,
+        "switches_created": switches_created,
+        "skipped_existing": skipped_existing,
+    }
 
 
 # ── Rack elevation ────────────────────────────────────────────────────────
