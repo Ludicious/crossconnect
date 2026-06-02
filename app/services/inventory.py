@@ -507,6 +507,92 @@ def autocomplete_device_types(db: Session, q: str, category: Optional[str] = Non
 
 # ── CSV Bulk Import helpers ───────────────────────────────────────────────
 
+def list_racks_with_stats(
+    db: Session,
+    datacenter_id: Optional[int] = None,
+    max_ru: int = 42,
+) -> list[dict]:
+    """
+    Return one dict per non-deleted rack with aggregated counts and U usage.
+    Avoids N+1: counts come from two grouped queries, not per-rack loops.
+    Sorted by datacenter_code then rack name.
+    """
+    from sqlalchemy import case
+
+    # ── Base rack query with datacenter eager-loaded ───────────────────────
+    rack_q = (
+        db.query(Rack)
+        .options(joinedload(Rack.datacenter))
+        .filter(Rack.deleted_at.is_(None))
+    )
+    if datacenter_id:
+        rack_q = rack_q.filter(Rack.datacenter_id == datacenter_id)
+    racks = rack_q.all()
+    if not racks:
+        return []
+
+    rack_ids = [r.id for r in racks]
+
+    # ── Device counts & U usage per rack ──────────────────────────────────
+    from app.models.inventory import DeviceType
+    dev_rows = (
+        db.query(
+            Device.rack_id,
+            func.count(Device.id),
+            func.sum(
+                case((DeviceType.rack_u.isnot(None), DeviceType.rack_u), else_=1)
+            ),
+        )
+        .outerjoin(DeviceType, Device.device_type_id == DeviceType.id)
+        .filter(Device.rack_id.in_(rack_ids), Device.deleted_at.is_(None))
+        .group_by(Device.rack_id)
+        .all()
+    )
+    device_count_map: dict[int, int] = {}
+    device_u_map: dict[int, int] = {}
+    for rack_id, cnt, u_sum in dev_rows:
+        device_count_map[rack_id] = cnt
+        device_u_map[rack_id] = int(u_sum or 0)
+
+    # ── Switch counts & U usage per rack ──────────────────────────────────
+    from app.models.inventory import Switch as _Switch
+    sw_rows = (
+        db.query(
+            _Switch.rack_id,
+            func.count(_Switch.id),
+            func.sum(
+                case((DeviceType.rack_u.isnot(None), DeviceType.rack_u), else_=1)
+            ),
+        )
+        .outerjoin(DeviceType, _Switch.switch_type_id == DeviceType.id)
+        .filter(_Switch.rack_id.in_(rack_ids), _Switch.deleted_at.is_(None))
+        .group_by(_Switch.rack_id)
+        .all()
+    )
+    switch_count_map: dict[int, int] = {}
+    switch_u_map: dict[int, int] = {}
+    for rack_id, cnt, u_sum in sw_rows:
+        switch_count_map[rack_id] = cnt
+        switch_u_map[rack_id] = int(u_sum or 0)
+
+    # ── Assemble results ──────────────────────────────────────────────────
+    results = []
+    for rack in racks:
+        u_occupied = device_u_map.get(rack.id, 0) + switch_u_map.get(rack.id, 0)
+        results.append({
+            "rack": rack,
+            "datacenter_code": rack.datacenter.code,
+            "datacenter_name": rack.datacenter.name,
+            "device_count": device_count_map.get(rack.id, 0),
+            "switch_count": switch_count_map.get(rack.id, 0),
+            "u_occupied": u_occupied,
+            "max_ru": max_ru,
+        })
+
+    results.sort(key=lambda x: (x["datacenter_code"].lower(), x["rack"].name.lower()))
+    return results
+
+
 def get_device_by_name_in_rack(db: Session, rack_id: int, name: str) -> "Optional[Device]":
     return db.query(Device).filter(
         Device.rack_id == rack_id,

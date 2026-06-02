@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Rack Elevations — CrossConnect{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h4 class="fw-bold mb-0"><i class="bi bi-hdd-rack me-2 text-primary"></i>Rack Elevations</h4>
+</div>
+
+<!-- Datacenter filter -->
+<form method="get" action="/inventory/racks" class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <label class="form-label mb-0 small fw-semibold text-muted">Datacenter:</label>
+  <select name="dc_id" class="form-select form-select-sm" style="width:auto;min-width:180px"
+          onchange="this.form.submit()">
+    <option value="">All Datacenters</option>
+    {% for dc in datacenters %}
+    <option value="{{ dc.id }}" {% if filter_dc_id == dc.id %}selected{% endif %}>
+      {{ dc.code }} — {{ dc.name }}
+    </option>
+    {% endfor %}
+  </select>
+  {% if filter_dc_id %}
+  <a href="/inventory/racks" class="btn btn-outline-secondary btn-sm">Clear</a>
+  {% endif %}
+  <span class="text-muted small ms-1">{{ racks|length }} rack(s)</span>
+</form>
+
+{% if racks %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0 small align-middle">
+      <thead>
+        <tr style="font-size:.72rem;text-transform:uppercase;letter-spacing:.04em">
+          <th style="width:110px">Datacenter</th>
+          <th>Rack</th>
+          <th style="width:80px" class="text-center">Devices</th>
+          <th style="width:80px" class="text-center">Switches</th>
+          <th style="width:180px">U Used</th>
+          <th style="width:130px"></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for stat in racks %}
+        {% set pct = [((stat.u_occupied / stat.max_ru) * 100)|round(0)|int, 100]|min %}
+        {% set over = stat.u_occupied > stat.max_ru %}
+        <tr>
+          <td>
+            <span class="mono fw-semibold">{{ stat.datacenter_code }}</span>
+            <span class="text-muted ms-1" style="font-size:.7rem">{{ stat.datacenter_name }}</span>
+          </td>
+          <td>
+            <a href="/inventory/racks/{{ stat.rack.id }}"
+               class="mono fw-semibold text-decoration-none"
+               style="color:var(--cc-accent,#38bdf8)">{{ stat.rack.name }}</a>
+            {% if stat.rack.grid_position %}
+            <span class="text-muted ms-1" style="font-size:.7rem">{{ stat.rack.grid_position }}</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if stat.device_count %}
+            <span class="badge bg-secondary">{{ stat.device_count }}</span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if stat.switch_count %}
+            <span class="badge bg-secondary">{{ stat.switch_count }}</span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <span class="mono {% if over %}text-warning{% endif %}" style="min-width:72px;font-size:.78rem">
+                {{ stat.u_occupied }} / {{ stat.max_ru }}U
+              </span>
+              <div class="progress flex-grow-1" style="height:5px">
+                <div class="progress-bar {% if over %}bg-warning{% elif pct >= 90 %}bg-danger{% elif pct >= 70 %}bg-warning{% else %}bg-success{% endif %}"
+                     style="width:{{ pct }}%"></div>
+              </div>
+            </div>
+          </td>
+          <td class="text-end">
+            <a href="/analytics/rack/{{ stat.rack.id }}"
+               class="btn btn-outline-secondary btn-sm py-0 px-2">
+              <i class="bi bi-layout-three-columns me-1"></i>Elevation
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<p class="text-muted small">
+  {% if filter_dc_id %}No racks in this datacenter.{% else %}No racks found.{% endif %}
+</p>
+{% endif %}
+{% endblock %}

@@ -380,6 +380,25 @@ async def device_import_post(
     })
 
 
+@router.get("/racks", response_class=HTMLResponse)
+async def rack_browser(
+    request: Request,
+    dc_id: str = Query(default=""),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    dc_id_int = int(dc_id) if dc_id.strip() else None
+    max_ru = int(get_setting(db, "max_rack_ru") or 42)
+    racks = svc.list_racks_with_stats(db, datacenter_id=dc_id_int, max_ru=max_ru)
+    datacenters = svc.list_datacenters(db)
+    return _tpl(request, "inventory/rack_browser.html", {
+        "request": request, "user": user,
+        "racks": racks,
+        "datacenters": datacenters,
+        "filter_dc_id": dc_id_int,
+    })
+
+
 @router.get("/racks/{rack_id}", response_class=HTMLResponse)
 async def rack_detail(rack_id: int, request: Request, user=Depends(get_current_user), db: Session = Depends(get_db)):
     rack = svc.get_rack(db, rack_id)
