@@ -442,10 +442,11 @@ function csvImporter() {
         if (json.hydration) {
           const h = json.hydration;
           const parts = [];
-          if (h.racks_created)    parts.push(`${h.racks_created} rack(s)`);
-          if (h.systems_created)  parts.push(`${h.systems_created} system(s)`);
-          if (h.devices_created)  parts.push(`${h.devices_created} device(s)`);
-          if (h.switches_created) parts.push(`${h.switches_created} switch(es)`);
+          if (h.racks_created)         parts.push(`${h.racks_created} rack(s)`);
+          if (h.devices_created)       parts.push(`${h.devices_created} device(s)`);
+          if (h.switches_created)      parts.push(`${h.switches_created} switch(es)`);
+          if (h.patch_panels_created)  parts.push(`${h.patch_panels_created} patch panel(s)`);
+          if (h.systems_created)       parts.push(`${h.systems_created} system(s)`);
           if (parts.length) msg += ` Added ${parts.join(', ')} to inventory.`;
         }
         if (json.hydration_error) msg += ` (Inventory hydration error: ${json.hydration_error})`;

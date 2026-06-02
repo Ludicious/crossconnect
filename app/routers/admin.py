@@ -42,6 +42,7 @@ TUNING_EDITABLE_KEYS = {
     "port_adjacency_threshold",
     "excel_import_skip_sheets",
     "excel_import_column_map",
+    "purpose_alias_map",
     "recycle_bin_enabled",
     "backup_directory",
 }
@@ -179,6 +180,13 @@ async def admin_tuning_post(request: Request, db: Session = Depends(get_db),
             json.loads(col_map)
         except json.JSONDecodeError as e:
             errors.append(f"excel_import_column_map: invalid JSON — {e}")
+
+    purpose_map = (form.get("purpose_alias_map") or "").strip()
+    if purpose_map:
+        try:
+            json.loads(purpose_map)
+        except json.JSONDecodeError as e:
+            errors.append(f"purpose_alias_map: invalid JSON — {e}")
 
     lengths_raw = (form.get("cable_standard_lengths_m") or "").strip()
     if lengths_raw:

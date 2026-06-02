@@ -523,6 +523,13 @@ def get_switch_by_name_in_rack(db: Session, rack_id: int, name: str) -> "Optiona
     ).first()
 
 
+def get_patch_panel_by_name_in_rack(db: Session, rack_id: int, name: str) -> "Optional[PatchPanel]":
+    return db.query(PatchPanel).filter(
+        PatchPanel.rack_id == rack_id,
+        func.lower(PatchPanel.name) == name.lower(),
+    ).first()
+
+
 def get_rack_by_name(db: Session, dc_id: int, name: str) -> "Optional[Rack]":
     return db.query(Rack).filter(
         Rack.datacenter_id == dc_id,
@@ -714,6 +721,7 @@ def hydrate_inventory_from_connections(
     systems_created = 0
     devices_created = 0
     switches_created = 0
+    patch_panels_created = 0
     skipped_existing = 0
 
     # ── In-session caches to avoid repeat DB hits ─────────────────────────
@@ -854,6 +862,46 @@ def hydrate_inventory_from_connections(
                     detail=f"{switch.name} role={role} rack_id={rack.id} (hydrated)")
         switches_created += 1
 
+    # ── Pass 5: patch panels ──────────────────────────────────────────────
+    # Each connection row may reference a device-side patch panel rack + module
+    # and a switch-side patch panel rack + module. We create one PatchPanel stub
+    # per unique (rack, module) pair. Module is used as the panel name since a
+    # rack may hold multiple numbered modules. Rows with no module are skipped.
+    seen_panels: set[tuple] = set()
+
+    def _get_or_create_panel(rack_name_raw: str, module_raw: str) -> None:
+        nonlocal patch_panels_created, skipped_existing
+        rack_name = _s(rack_name_raw)
+        module = _s(module_raw)
+        if not rack_name or not module:
+            return
+        rack = rack_cache.get(rack_name.lower())
+        if not rack:
+            return
+        key = (rack.id, module.lower())
+        if key in seen_panels:
+            return
+        seen_panels.add(key)
+        if get_patch_panel_by_name_in_rack(db, rack.id, module):
+            skipped_existing += 1
+            return
+        panel = PatchPanel(rack_id=rack.id, name=module)
+        db.add(panel)
+        db.flush()
+        write_audit(db, created_by, "wide", "patch_panel", panel.id, "create",
+                    detail=f"{panel.name} rack_id={rack.id} (hydrated)")
+        patch_panels_created += 1
+
+    for row in active_rows:
+        _get_or_create_panel(
+            _s(row.get("device_patch_rack_name_raw", "")),
+            _s(row.get("device_patch_module", "")),
+        )
+        _get_or_create_panel(
+            _s(row.get("switch_patch_rack_name_raw", "")),
+            _s(row.get("switch_patch_module", "")),
+        )
+
     db.commit()
 
     return {
@@ -861,6 +909,7 @@ def hydrate_inventory_from_connections(
         "systems_created": systems_created,
         "devices_created": devices_created,
         "switches_created": switches_created,
+        "patch_panels_created": patch_panels_created,
         "skipped_existing": skipped_existing,
     }
 
@@ -923,20 +972,29 @@ def get_rack_elevation(db: Session, rack_id: int, max_ru: int = 42) -> list[dict
         if wo_status in ("issued", "in_progress"):
             device_stats[d_id]["active_wo_ids"].add(wo_id)
 
-    # ── Build U → (device, offset) occupancy map ───────────────────────────
+    # ── Pre-compute device heights ────────────────────────────────────────
+    device_heights: dict[int, int] = {}
+    for device in active_devices:
+        h = 1
+        if device.device_type and device.device_type.rack_u:
+            h = device.device_type.rack_u
+        device_heights[device.id] = h
+
+    # ── Build U → (device, offset) occupancy map ──────────────────────────
     u_map: dict[int, tuple] = {}  # u → (device, offset_within_device)
     for device in active_devices:
         if device.starting_ru is None:
             continue
-        height = 1
-        if device.device_type and device.device_type.rack_u:
-            height = device.device_type.rack_u
+        height = device_heights[device.id]
         for offset in range(height):
             u = device.starting_ru + offset
             if 1 <= u <= max_ru:
                 u_map[u] = (device, offset)
 
-    # ── Assemble slot list ─────────────────────────────────────────────────
+    # ── Assemble slot list (ascending), then reverse for top-down display ─
+    # DC convention: highest RU is at the top of the cabinet.
+    # For a multi-U device, the label row is its highest occupied U
+    # (offset == height-1), with rowspan extending downward visually.
     slots: list[dict] = []
     for u in range(1, max_ru + 1):
         if u not in u_map:
@@ -954,9 +1012,11 @@ def get_rack_elevation(db: Session, rack_id: int, max_ru: int = 42) -> list[dict
             continue
 
         device, offset = u_map[u]
-        is_continuation = offset > 0
+        height = device_heights[device.id]
+        # Visual top = highest U of the device's span (last in ascending order)
+        is_visual_top = (offset == height - 1)
 
-        if is_continuation:
+        if not is_visual_top:
             slots.append({
                 "u": u,
                 "device": device,
@@ -970,11 +1030,7 @@ def get_rack_elevation(db: Session, rack_id: int, max_ru: int = 42) -> list[dict
             })
             continue
 
-        # First U of this device
-        height = 1
-        if device.device_type and device.device_type.rack_u:
-            height = device.device_type.rack_u
-
+        # Label row (visual top of this device)
         system_label: Optional[str] = None
         if device.system:
             system_label = (
@@ -1000,4 +1056,5 @@ def get_rack_elevation(db: Session, rack_id: int, max_ru: int = 42) -> list[dict
             "active_wo_count": len(stats.get("active_wo_ids", set())),
         })
 
-    return slots
+    # Reverse: highest RU first (top of cabinet = top of table)
+    return slots[::-1]

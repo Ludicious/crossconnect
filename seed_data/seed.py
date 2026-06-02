@@ -79,6 +79,24 @@ DEFAULT_SETTINGS = [
         "./backups",
         "Directory for scheduled backups (Phase 11). Used by install script to configure cron job.",
     ),
+    (
+        "purpose_alias_map",
+        _json.dumps({
+            "isl": "storage",
+            "disk_storage": "storage",
+            "tape_server": "storage",
+            "tape_storage": "storage",
+            "disk": "storage",
+            "tape": "storage",
+            "san": "storage",
+            "lan": "data",
+            "mgmt": "management",
+            "management": "management",
+            "idrac": "management",
+            "ilo": "management",
+        }),
+        "JSON object mapping lowercased raw source purpose strings to canonical purpose values (management/data/storage/other). Applied during connection import.",
+    ),
 ]
 
 

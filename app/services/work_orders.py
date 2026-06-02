@@ -10,10 +10,12 @@ from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
 
+import json as _json
+
 from app.models.work_order import WorkOrder, VALID_STATUSES, VALID_WORK_TYPES
 from app.services.cable_length import calculate_and_store
 from app.services.audit import write_audit
-from app.services.settings import get_bool_setting
+from app.services.settings import get_bool_setting, get_setting
 from app.models.connection import Connection, INSTALL_STATUSES, ACTIONS, CABLE_TYPES, PURPOSES
 from app.models.user import User
 
@@ -264,7 +266,22 @@ def _coerce_vlan(val) -> Optional[str]:
     return s
 
 
-def _conn_from_form(data: dict) -> dict:
+def resolve_purpose(raw: str, alias_map: dict) -> str:
+    """Map a raw purpose string to a canonical PURPOSES value.
+
+    Lookup order: alias_map (case-insensitive) → already canonical → "data".
+    Falls back to "data" (not "management") so unknown infra terms don't
+    mis-classify SAN links.
+    """
+    key = raw.strip().lower()
+    if key in alias_map:
+        return alias_map[key]
+    if key in PURPOSES:
+        return key
+    return "data"
+
+
+def _conn_from_form(data: dict, alias_map: Optional[dict] = None) -> dict:
     """Coerce form dict to connection field dict."""
     def _s(v):
         return "" if v is None else str(v)
@@ -275,12 +292,15 @@ def _conn_from_form(data: dict) -> dict:
         try: return int(v) if v else None
         except (ValueError, TypeError): return None
 
+    raw_purpose = data.get("purpose", "").strip()
+    purpose = resolve_purpose(raw_purpose, alias_map or {})
+
     return dict(
         action=data.get("action", "").strip().upper(),
         fabric=data.get("fabric", "").strip().upper() or None,
         port_description=data.get("port_description", "").strip() or None,
         cable_type=data.get("cable_type", "").strip(),
-        purpose=data.get("purpose", "").strip(),
+        purpose=purpose,
         system_name_raw=data.get("system_name_raw", "").strip() or None,
         device_name_raw=data.get("device_name_raw", "").strip() or None,
         device_serial=data.get("device_serial", "").strip() or None,
@@ -315,13 +335,39 @@ def _conn_from_form(data: dict) -> dict:
     )
 
 
+_DEFAULT_PURPOSE_ALIAS_MAP = {
+    "isl": "storage", "disk_storage": "storage", "tape_server": "storage",
+    "tape_storage": "storage", "disk": "storage", "tape": "storage", "san": "storage",
+    "lan": "data",
+    "mgmt": "management", "management": "management", "idrac": "management", "ilo": "management",
+}
+
+
+def _load_purpose_alias_map(db: Session) -> dict:
+    """Read purpose_alias_map setting; upsert the default if missing."""
+    from app.services.settings import upsert_setting
+    from app.models.settings import AppSetting
+    row = db.get(AppSetting, "purpose_alias_map")
+    if row is None:
+        upsert_setting(db, "purpose_alias_map", _json.dumps(_DEFAULT_PURPOSE_ALIAS_MAP))
+        db.commit()
+        return dict(_DEFAULT_PURPOSE_ALIAS_MAP)
+    try:
+        return _json.loads(row.value)
+    except (ValueError, TypeError):
+        return {}
+
+
 def create_connection(db: Session, wo_id: int, form_data: dict,
-                       created_by: int) -> tuple[Connection, list[str], list[str]]:
+                       created_by: int,
+                       alias_map: Optional[dict] = None) -> tuple[Connection, list[str], list[str]]:
     """
     Returns (connection, hard_errors, warnings).
     Saves even with warnings; does NOT save if hard_errors present.
     """
-    fields = _conn_from_form(form_data)
+    if alias_map is None:
+        alias_map = _load_purpose_alias_map(db)
+    fields = _conn_from_form(form_data, alias_map)
     conn = Connection(work_order_id=wo_id, created_by=created_by, **fields)
 
     hard_errors = []
@@ -399,11 +445,12 @@ def bulk_create_connections(db: Session, wo_id: int, rows: list[dict],
     Create multiple connections from parsed CSV/TSV rows.
     Returns {created: N, skipped: [{row, errors}]}.
     """
+    alias_map = _load_purpose_alias_map(db)
     created = 0
     skipped = []
     all_warnings = []
     for i, row in enumerate(rows):
-        conn, errors, row_warnings = create_connection(db, wo_id, row, created_by)
+        conn, errors, row_warnings = create_connection(db, wo_id, row, created_by, alias_map=alias_map)
         if errors:
             skipped.append({"row": i + 1, "errors": errors})
         else:

@@ -109,6 +109,17 @@
                     onclick="copyExampleToActive()">Copy to Active Map</button>
           </div>
         </div>
+        <div class="col-md-6">
+          <label class="form-label">Purpose Alias Map</label>
+          <textarea name="purpose_alias_map" class="form-control font-monospace" rows="8"
+                    id="purposeAliasMap">{{ settings.get('purpose_alias_map', '{}') }}</textarea>
+          <div class="form-text d-flex justify-content-between">
+            <span>JSON mapping lowercased raw purpose strings to canonical values (management/data/storage/other).</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="validateJson('purposeAliasMap')">Validate JSON</button>
+          </div>
+          <div id="purposeAliasMapError" class="text-danger small mt-1" style="display:none;"></div>
+        </div>
       </div>
     </div>
   </div>

@@ -36,11 +36,17 @@ def _san_line2(c) -> str:
 
 
 def _lan_line1(c) -> str:
-    return (
+    dev_side = (
         f"{_s(c.device_name_raw)} : {_s(c.device_grid)} : "
         f"U {_s(c.device_rack_u)}: C {_s(c.device_slot)} : P {_s(c.device_port)}"
-        f" - ({_s(c.switch_patch_rack_name_raw)}, {_s(c.switch_name_raw)}, P {_s(c.switch_port)})"
     )
+    # Build switch group from non-empty parts; omit missing fields and their separators.
+    sw_parts = [p for p in [
+        _s(c.switch_patch_rack_name_raw),
+        _s(c.switch_name_raw),
+        f"P {_s(c.switch_port)}" if _s(c.switch_port) else "",
+    ] if p]
+    return f"{dev_side} - ({', '.join(sw_parts)})"
 
 
 _HEADERS = [
