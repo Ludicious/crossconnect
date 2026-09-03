@@ -53,6 +53,10 @@
             <td class="text-end">
               {% if user.role in ['architect','admin'] %}
               <a href="/inventory/racks/{{ rack.id }}/edit" class="btn btn-outline-secondary btn-sm py-0 px-2">Edit</a>
+              <form method="post" action="/inventory/racks/{{ rack.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('Delete rack {{ rack.name }}? All contents must be removed first.')">
+                <button class="btn btn-outline-danger btn-sm py-0 px-2"><i class="bi bi-trash"></i></button>
+              </form>
               {% endif %}
             </td>
           </tr>

@@ -104,8 +104,11 @@ class System(Base):
     system_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     devices: Mapped[list["Device"]] = relationship("Device", back_populates="system")
+    deleter: Mapped[Optional["User"]] = relationship("User", foreign_keys="[System.deleted_by]")
 
 
 class Device(Base):

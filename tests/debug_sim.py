@@ -1013,6 +1013,43 @@ def test_recycle_bin_toggle(db, dc, rack, user):
     _set_rb(db, True)
 
 
+def test_recycle_bin_system(db, user):
+    section("Admin: Recycle Bin (systems soft-delete / restore / purge)")
+    from app.services.recycle_bin import list_deleted_systems, restore_system, purge_all
+
+    _set_rb(db, True)
+
+    system = inv_svc.create_system(db, name="_SIM RB System", system_type="storage", user_id=user.id)
+    CREATED_IDS["system"].append(system.id)
+    system_id = system.id
+
+    inv_svc.delete_system(db, system, user_id=user.id)
+    db.refresh(system)
+    check("System soft-deleted (deleted_at set)", system.deleted_at is not None)
+
+    check("System excluded from list_systems after soft-delete",
+          not any(s.id == system_id for s in inv_svc.list_systems(db)))
+
+    deleted = list_deleted_systems(db)
+    check("Recycle bin: soft-deleted system appears in list",
+          any(s.id == system_id for s in deleted))
+
+    restore_system(db, system_id)
+    db.refresh(system)
+    check("Recycle bin: system restored (deleted_at=None)", system.deleted_at is None)
+
+    check("System back in list_systems after restore",
+          any(s.id == system_id for s in inv_svc.list_systems(db)))
+
+    # Re-delete then purge
+    inv_svc.delete_system(db, system, user_id=user.id)
+    count = purge_all(db, "systems")
+    check("Recycle bin purge: systems count > 0", count > 0)
+
+    still_there = db.get(System, system_id)
+    check("Recycle bin purge: system permanently gone from DB", still_there is None)
+
+
 def test_tuning_validation():
     section("Admin: Tuning Validation Logic")
     import json
@@ -1134,6 +1171,7 @@ def test_admin_templates(db, dc, rack, user):
     from app.services.recycle_bin import (
         list_deleted_connections, list_deleted_work_orders,
         list_deleted_devices, list_deleted_racks, list_deleted_switches,
+        list_deleted_systems,
     )
     render("admin/recycle_bin.html", {
         "tab": "connections",
@@ -1143,6 +1181,19 @@ def test_admin_templates(db, dc, rack, user):
         "deleted_devices": [],
         "deleted_racks": [],
         "deleted_switches": [],
+        "deleted_systems": [],
+        "deleted_counts": deleted_counts,
+    })
+
+    render("admin/recycle_bin.html", {
+        "tab": "systems",
+        "recycle_bin_enabled": recycle_bin_enabled,
+        "deleted_connections": [],
+        "deleted_work_orders": [],
+        "deleted_devices": [],
+        "deleted_racks": [],
+        "deleted_switches": [],
+        "deleted_systems": list_deleted_systems(db),
         "deleted_counts": deleted_counts,
     })
 
@@ -1220,6 +1271,7 @@ def main():
         test_recycle_bin_list(db, dc, rack, user)
         test_recycle_bin_purge(db, dc, rack, user)
         test_recycle_bin_toggle(db, dc, rack, user)
+        test_recycle_bin_system(db, user)
         test_tuning_validation()
         test_admin_templates(db, dc, rack, user)
     except Exception as e:

@@ -173,7 +173,7 @@ def delete_rack(db: Session, rack: Rack, user_id: Optional[int] = None) -> None:
 # ── Systems ───────────────────────────────────────────────────────────────
 
 def list_systems(db: Session, search: str = "") -> list[System]:
-    q = db.query(System)
+    q = db.query(System).filter(System.deleted_at.is_(None))
     if search:
         q = q.filter(System.name.ilike(f"%{search}%"))
     return q.order_by(System.name).all()
@@ -182,7 +182,7 @@ def list_systems(db: Session, search: str = "") -> list[System]:
 def get_system(db: Session, system_id: int) -> Optional[System]:
     return db.query(System).options(
         joinedload(System.devices).joinedload(Device.rack)
-    ).filter(System.id == system_id).first()
+    ).filter(System.id == system_id, System.deleted_at.is_(None)).first()
 
 
 def create_system(db: Session, name: str, system_type: str = "",
@@ -217,11 +217,16 @@ def update_system(db: Session, system: System, user_id: Optional[int] = None,
 
 
 def delete_system(db: Session, system: System, user_id: Optional[int] = None) -> None:
-    if any(d.system_id == system.id for d in system.devices):
+    active_devices = [d for d in system.devices if d.deleted_at is None]
+    if active_devices:
         raise ValueError("Cannot delete system with existing devices. Reassign or delete them first.")
     write_audit(db, user_id, "wide", "system", system.id, "delete",
                 detail=f"{system.name}")
-    db.delete(system)
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        system.deleted_at = datetime.utcnow()
+        system.deleted_by = user_id
+    else:
+        db.delete(system)
     db.commit()
 
 
@@ -395,7 +400,9 @@ def autocomplete_racks(db: Session, q: str, dc_id: Optional[int] = None, limit: 
 
 
 def autocomplete_systems(db: Session, q: str, limit: int = 10) -> list[dict]:
-    rows = db.query(System).filter(System.name.ilike(f"%{q}%")).order_by(System.name).limit(limit).all()
+    rows = db.query(System).filter(
+        System.name.ilike(f"%{q}%"), System.deleted_at.is_(None)
+    ).order_by(System.name).limit(limit).all()
     return [{"id": r.id, "label": r.name, "name": r.name, "type": r.system_type} for r in rows]
 
 
@@ -625,7 +632,9 @@ def get_rack_by_name(db: Session, dc_id: int, name: str) -> "Optional[Rack]":
 
 
 def get_system_by_name(db: Session, name: str) -> "Optional[System]":
-    return db.query(System).filter(func.lower(System.name) == name.lower()).first()
+    return db.query(System).filter(
+        func.lower(System.name) == name.lower(), System.deleted_at.is_(None)
+    ).first()
 
 
 def get_device_type_by_model(db: Session, model: str) -> "Optional[DeviceType]":

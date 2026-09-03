@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.connection import Connection
-from app.models.inventory import Device, Rack, Switch
+from app.models.inventory import Device, Rack, Switch, System
 from app.models.work_order import WorkOrder
 
 
@@ -49,6 +49,14 @@ def list_deleted_switches(db: Session) -> list[Switch]:
             .filter(Switch.deleted_at.isnot(None))
             .options(joinedload(Switch.rack), joinedload(Switch.deleter))
             .order_by(Switch.deleted_at.desc())
+            .all())
+
+
+def list_deleted_systems(db: Session) -> list[System]:
+    return (db.query(System)
+            .filter(System.deleted_at.isnot(None))
+            .options(joinedload(System.deleter))
+            .order_by(System.deleted_at.desc())
             .all())
 
 
@@ -103,6 +111,14 @@ def restore_switch(db: Session, switch_id: int) -> Switch:
     return obj
 
 
+def restore_system(db: Session, system_id: int) -> System:
+    obj = db.get(System, system_id)
+    _restore(obj, f"System {system_id}")
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
 # ── Hard delete functions (admin only — enforce in router) ────────────────
 
 def _require_deleted(obj, label: str):
@@ -147,6 +163,13 @@ def hard_delete_switch(db: Session, switch_id: int) -> None:
     db.commit()
 
 
+def hard_delete_system(db: Session, system_id: int) -> None:
+    obj = db.get(System, system_id)
+    _require_deleted(obj, f"System {system_id}")
+    db.delete(obj)
+    db.commit()
+
+
 # ── Purge all ─────────────────────────────────────────────────────────────
 
 _ENTITY_MAP = {
@@ -155,6 +178,7 @@ _ENTITY_MAP = {
     "devices": Device,
     "racks": Rack,
     "switches": Switch,
+    "systems": System,
 }
 
 

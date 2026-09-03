@@ -23,6 +23,7 @@
     ('devices', 'bi-server', 'Devices'),
     ('racks', 'bi-hdd-rack', 'Racks'),
     ('switches', 'bi-diagram-2', 'Switches'),
+    ('systems', 'bi-diagram-3', 'Systems'),
   ] %}
   {% for tab_id, icon, label in tabs %}
   <li class="nav-item">
@@ -276,6 +277,53 @@
 {% else %}
 <div class="text-center text-muted py-5">
   <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted switches.
+</div>
+{% endif %}
+
+{% elif tab == 'systems' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Deleted Systems ({{ deleted_systems | length }})</h5>
+  {% if deleted_systems %}
+  <form method="post" action="/admin/recycle-bin/purge/systems"
+        onsubmit="return confirm('Permanently delete ALL {{ deleted_systems | length }} deleted systems?')">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <i class="bi bi-trash me-1"></i>Purge All ({{ deleted_systems | length }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% if deleted_systems %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr>
+      <th>ID</th><th>Name</th><th>Type</th>
+      <th>Deleted At</th><th>Deleted By</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for s in deleted_systems %}
+    <tr>
+      <td>{{ s.id }}</td>
+      <td>{{ s.name }}</td>
+      <td>{{ s.system_type or '—' }}</td>
+      <td class="small">{{ s.deleted_at.strftime("%Y-%m-%d %H:%M") if s.deleted_at else '—' }}</td>
+      <td class="small">{{ s.deleter.display_name if s.deleter else (s.deleted_by or '—') }}</td>
+      <td class="d-flex gap-1">
+        <form method="post" action="/admin/recycle-bin/restore/systems/{{ s.id }}">
+          <button type="submit" class="btn btn-sm btn-success">Restore</button>
+        </form>
+        <form method="post" action="/admin/recycle-bin/delete/systems/{{ s.id }}"
+              onsubmit="return confirm('Permanently delete system {{ s.id }}?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted systems.
 </div>
 {% endif %}
 

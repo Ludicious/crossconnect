@@ -106,6 +106,12 @@ tr.row-dirty td:nth-child(2) { position: relative; padding-left: 14px; }
           <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Cancel this work order?')">Cancel</button>
         </form>
       {% endif %}
+      {% if wo.status in ['draft','cancelled'] %}
+        <form method="post" action="/work-orders/{{ wo.id }}/delete" class="d-inline"
+              onsubmit="return confirm('Delete work order {{ wo.name }}? This cannot be undone from here.')">
+          <button class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i>Delete</button>
+        </form>
+      {% endif %}
     {% endif %}
 
     {% if user.role == 'dc_tech' and wo.status == 'issued' %}

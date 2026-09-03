@@ -219,7 +219,7 @@ async def admin_tuning_post(request: Request, db: Session = Depends(get_db),
 
 # ── Recycle Bin ───────────────────────────────────────────────────────────
 
-VALID_TABS = {"connections", "work_orders", "devices", "racks", "switches"}
+VALID_TABS = {"connections", "work_orders", "devices", "racks", "switches", "systems"}
 
 
 @router.get("/recycle-bin", response_class=HTMLResponse)
@@ -238,6 +238,7 @@ async def admin_recycle_bin(request: Request, db: Session = Depends(get_db),
     deleted_devices = rb_svc.list_deleted_devices(db) if tab == "devices" else []
     deleted_racks = rb_svc.list_deleted_racks(db) if tab == "racks" else []
     deleted_switches = rb_svc.list_deleted_switches(db) if tab == "switches" else []
+    deleted_systems = rb_svc.list_deleted_systems(db) if tab == "systems" else []
 
     return templates.TemplateResponse(request=request, name="admin/recycle_bin.html", context={
         "user": user,
@@ -248,6 +249,7 @@ async def admin_recycle_bin(request: Request, db: Session = Depends(get_db),
         "deleted_devices": deleted_devices,
         "deleted_racks": deleted_racks,
         "deleted_switches": deleted_switches,
+        "deleted_systems": deleted_systems,
         "deleted_counts": deleted_counts,
     })
 
@@ -268,6 +270,8 @@ async def admin_recycle_bin_restore(entity_type: str, item_id: int,
             rb_svc.restore_rack(db, item_id)
         elif entity_type == "switches":
             rb_svc.restore_switch(db, item_id)
+        elif entity_type == "systems":
+            rb_svc.restore_system(db, item_id)
         else:
             raise HTTPException(400, f"Unknown entity type: {entity_type}")
     except ValueError as e:
@@ -291,6 +295,8 @@ async def admin_recycle_bin_delete(entity_type: str, item_id: int,
             rb_svc.hard_delete_rack(db, item_id)
         elif entity_type == "switches":
             rb_svc.hard_delete_switch(db, item_id)
+        elif entity_type == "systems":
+            rb_svc.hard_delete_system(db, item_id)
         else:
             raise HTTPException(400, f"Unknown entity type: {entity_type}")
     except ValueError as e:
