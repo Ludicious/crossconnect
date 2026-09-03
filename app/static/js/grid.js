@@ -958,6 +958,47 @@ function applyBulkEdit() {
   showToast(`Applied "${value}" to ${checked.length} row(s)`, 'success');
 }
 
+// ── Bulk delete ────────────────────────────────────────────────────────────
+async function bulkDeleteSelected() {
+  const checked = [...document.querySelectorAll('.row-cb:checked')]
+    .filter(cb => cb.closest('tr').style.display !== 'none');
+  if (!checked.length) return;
+
+  const rows = checked.map(cb => cb.closest('tr'));
+  const newRows = rows.filter(r => r.dataset.id === 'new');
+  const persistedRows = rows.filter(r => r.dataset.id !== 'new');
+  const ids = persistedRows.map(r => parseInt(r.dataset.id, 10));
+
+  if (!confirm(`Delete ${rows.length} selected row${rows.length === 1 ? '' : 's'}? This cannot be undone from here.`)) return;
+
+  // Unsaved rows have no server record — just drop them locally.
+  newRows.forEach(r => r.remove());
+
+  if (!ids.length) {
+    clearSelection();
+    return;
+  }
+
+  try {
+    const resp = await fetch(`/work-orders/${WO_ID}/connections/bulk-delete`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids}),
+    });
+    const json = await resp.json();
+    if (json.ok) {
+      persistedRows.forEach(r => r.remove());
+      showToast(`Deleted ${json.deleted} row(s)`, 'success');
+    } else {
+      showToast(json.errors?.join('\n') || 'Bulk delete failed', 'danger');
+    }
+  } catch (e) {
+    showToast('Network error during bulk delete', 'danger');
+  } finally {
+    clearSelection();
+  }
+}
+
 // ── Client-side filter / search ───────────────────────────────────────────
 const _FILTER_FIELDS = [
   'system_name_raw','device_name_raw','switch_name_raw',

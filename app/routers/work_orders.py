@@ -421,3 +421,24 @@ async def conn_delete(
         raise HTTPException(404)
     svc.soft_delete_connection(db, conn, user.id)
     return JSONResponse({"ok": True})
+
+
+@router.post("/{wo_id}/connections/bulk-delete")
+async def conn_bulk_delete(
+    wo_id: int, request: Request,
+    db: Session = Depends(get_db), user=Depends(get_current_user),
+):
+    _arch_or_admin(request, db)
+    wo = svc.get_work_order(db, wo_id)
+    if not wo:
+        raise HTTPException(404)
+    body = await request.json()
+    raw_ids = body.get("ids", [])
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return JSONResponse({"ok": False, "errors": ["No rows selected."]}, 400)
+    try:
+        ids = [int(i) for i in raw_ids]
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "errors": ["Invalid row id."]}, 400)
+    count = svc.soft_delete_connections_bulk(db, wo_id, ids, user.id)
+    return JSONResponse({"ok": True, "deleted": count})

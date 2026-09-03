@@ -31,7 +31,8 @@ def _arch_or_admin(request, db):
 async def inventory_index(request: Request, user=Depends(get_current_user), db: Session = Depends(get_db)):
     dcs = svc.list_datacenters(db)
     systems = svc.list_systems(db)
-    return _tpl(request, "inventory/index.html", {"request": request, "user": user, "datacenters": dcs, "systems": systems})
+    error = request.query_params.get("error")
+    return _tpl(request, "inventory/index.html", {"request": request, "user": user, "datacenters": dcs, "systems": systems, "error": error})
 
 
 # ── Datacenters ───────────────────────────────────────────────────────────
@@ -69,7 +70,8 @@ async def dc_detail(dc_id: int, request: Request, user=Depends(get_current_user)
     if not dc:
         raise HTTPException(404, "Datacenter not found")
     racks = svc.list_racks(db, dc_id)
-    return _tpl(request, "inventory/dc_detail.html", {"request": request, "user": user, "dc": dc, "racks": racks})
+    error = request.query_params.get("error")
+    return _tpl(request, "inventory/dc_detail.html", {"request": request, "user": user, "dc": dc, "racks": racks, "error": error})
 
 
 @router.get("/datacenters/{dc_id}/edit", response_class=HTMLResponse)
@@ -456,6 +458,20 @@ async def rack_delete(rack_id: int, request: Request, db: Session = Depends(get_
                     {"request": request, "user": user, "rack": rack, "error": str(e)}, 400)
 
 
+@router.post("/racks/bulk-delete")
+async def racks_bulk_delete(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _arch_or_admin(request, db)
+    form = await request.form()
+    redirect_to = form.get("redirect_to") or "/inventory"
+    rack_ids = [int(v) for v in form.getlist("rack_ids") if v.strip().isdigit()]
+    result = svc.delete_racks_bulk(db, rack_ids, user_id=user.id)
+    if result["skipped"]:
+        from urllib.parse import quote
+        reasons = "; ".join(f"Rack {s['id']}: {s['reason']}" for s in result["skipped"])
+        return RedirectResponse(f"{redirect_to}?error={quote(reasons)}", status_code=302)
+    return RedirectResponse(redirect_to, status_code=302)
+
+
 # ── Devices (inside rack context) ─────────────────────────────────────────
 
 @router.get("/racks/{rack_id}/devices/new", response_class=HTMLResponse)
@@ -729,6 +745,20 @@ async def system_delete(system_id: int, request: Request, db: Session = Depends(
     except ValueError as e:
         return _tpl(request, "inventory/system_detail.html",
                     {"request": request, "user": user, "system": system, "error": str(e)}, 400)
+
+
+@router.post("/systems/bulk-delete")
+async def systems_bulk_delete(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    _arch_or_admin(request, db)
+    form = await request.form()
+    redirect_to = form.get("redirect_to") or "/inventory"
+    system_ids = [int(v) for v in form.getlist("system_ids") if v.strip().isdigit()]
+    result = svc.delete_systems_bulk(db, system_ids, user_id=user.id)
+    if result["skipped"]:
+        from urllib.parse import quote
+        reasons = "; ".join(f"System {s['id']}: {s['reason']}" for s in result["skipped"])
+        return RedirectResponse(f"{redirect_to}?error={quote(reasons)}", status_code=302)
+    return RedirectResponse(redirect_to, status_code=302)
 
 
 # ── Autocomplete JSON endpoints ───────────────────────────────────────────

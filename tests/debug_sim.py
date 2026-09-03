@@ -1050,6 +1050,172 @@ def test_recycle_bin_system(db, user):
     check("Recycle bin purge: system permanently gone from DB", still_there is None)
 
 
+def test_bulk_delete_racks(db, dc, user):
+    section("Inventory: Bulk Delete Racks")
+    from app.services.recycle_bin import list_deleted_racks
+
+    _set_rb(db, True)
+
+    r1 = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Bulk Rack 1", user_id=user.id)
+    r2 = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Bulk Rack 2", user_id=user.id)
+    r3 = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Bulk Rack 3", user_id=user.id)
+    CREATED_IDS["rack"].extend([r1.id, r2.id, r3.id])
+
+    # A rack with an active device attached should be skipped, not silently dropped
+    r_blocked = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Bulk Rack Blocked", user_id=user.id)
+    CREATED_IDS["rack"].append(r_blocked.id)
+    blocker = inv_svc.create_device(db, rack_id=r_blocked.id, name="_SIM Bulk Blocker Device", user_id=user.id)
+    CREATED_IDS["device"].append(blocker.id)
+
+    result = inv_svc.delete_racks_bulk(db, [r1.id, r2.id, r3.id, r_blocked.id], user_id=user.id)
+
+    check("Bulk delete racks: all 3 deletable racks reported deleted",
+          set(result["deleted"]) == {r1.id, r2.id, r3.id})
+    check("Bulk delete racks: blocked rack reported skipped (not silently dropped)",
+          any(s["id"] == r_blocked.id for s in result["skipped"]))
+
+    for rid in (r1.id, r2.id, r3.id):
+        obj = db.get(Rack, rid)
+        check(f"Bulk delete racks: rack {rid} soft-deleted (deleted_at set)", obj.deleted_at is not None)
+
+    still_active = db.get(Rack, r_blocked.id)
+    check("Bulk delete racks: blocked rack NOT deleted (still has active device)",
+          still_active.deleted_at is None)
+
+    deleted_list = list_deleted_racks(db)
+    check("Bulk delete racks: all 3 appear in recycle bin list",
+          {r1.id, r2.id, r3.id}.issubset({r.id for r in deleted_list}))
+
+    # Re-running with the same (now-deleted) ids should not double-process
+    result_again = inv_svc.delete_racks_bulk(db, [r1.id, r2.id, r3.id], user_id=user.id)
+    check("Bulk delete racks: already-deleted ids are not re-processed (reported skipped)",
+          len(result_again["deleted"]) == 0 and len(result_again["skipped"]) == 3)
+
+    # rb disabled path — a plain, never-populated rack, to isolate this check from
+    # the pre-existing hard-delete-with-orphaned-child-rows issue noted above
+    r4 = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Bulk Rack 4 (rb-off)", user_id=user.id)
+    CREATED_IDS["rack"].append(r4.id)
+    _set_rb(db, False)
+    result2 = inv_svc.delete_racks_bulk(db, [r4.id], user_id=user.id)
+    check("Bulk delete racks (rb disabled): rack hard-deleted, not soft-deleted",
+          r4.id in result2["deleted"] and db.get(Rack, r4.id) is None)
+    _set_rb(db, True)
+
+
+def test_bulk_delete_systems(db, rack, user):
+    section("Inventory: Bulk Delete Systems")
+    from app.services.recycle_bin import list_deleted_systems
+
+    _set_rb(db, True)
+
+    s1 = inv_svc.create_system(db, name="_SIM Bulk System 1", user_id=user.id)
+    s2 = inv_svc.create_system(db, name="_SIM Bulk System 2", user_id=user.id)
+    s3 = inv_svc.create_system(db, name="_SIM Bulk System 3", user_id=user.id)
+    CREATED_IDS["system"].extend([s1.id, s2.id, s3.id])
+
+    # A system with an active device attached should be skipped, not silently dropped
+    s_blocked = inv_svc.create_system(db, name="_SIM Bulk System Blocked", user_id=user.id)
+    CREATED_IDS["system"].append(s_blocked.id)
+    blocker = inv_svc.create_device(db, rack_id=rack.id, name="_SIM Bulk Sys Blocker Device",
+                                     system_id=s_blocked.id, user_id=user.id)
+    CREATED_IDS["device"].append(blocker.id)
+
+    result = inv_svc.delete_systems_bulk(db, [s1.id, s2.id, s3.id, s_blocked.id], user_id=user.id)
+
+    check("Bulk delete systems: all 3 deletable systems reported deleted",
+          set(result["deleted"]) == {s1.id, s2.id, s3.id})
+    check("Bulk delete systems: blocked system reported skipped (not silently dropped)",
+          any(s["id"] == s_blocked.id for s in result["skipped"]))
+
+    for sid in (s1.id, s2.id, s3.id):
+        obj = db.get(System, sid)
+        check(f"Bulk delete systems: system {sid} soft-deleted (deleted_at set)", obj.deleted_at is not None)
+
+    still_active = db.get(System, s_blocked.id)
+    check("Bulk delete systems: blocked system NOT deleted (still has active device)",
+          still_active.deleted_at is None)
+
+    deleted_list = list_deleted_systems(db)
+    check("Bulk delete systems: all 3 appear in recycle bin list",
+          {s1.id, s2.id, s3.id}.issubset({s.id for s in deleted_list}))
+
+    # Re-running with the same (now-deleted) ids should not double-process
+    result_again = inv_svc.delete_systems_bulk(db, [s1.id, s2.id, s3.id], user_id=user.id)
+    check("Bulk delete systems: already-deleted ids are not re-processed (reported skipped)",
+          len(result_again["deleted"]) == 0 and len(result_again["skipped"]) == 3)
+
+    # rb disabled path — a plain, never-populated system, isolated from the
+    # blocked-system fixture above
+    s4 = inv_svc.create_system(db, name="_SIM Bulk System 4 (rb-off)", user_id=user.id)
+    CREATED_IDS["system"].append(s4.id)
+    _set_rb(db, False)
+    result2 = inv_svc.delete_systems_bulk(db, [s4.id], user_id=user.id)
+    check("Bulk delete systems (rb disabled): system hard-deleted, not soft-deleted",
+          s4.id in result2["deleted"] and db.get(System, s4.id) is None)
+    _set_rb(db, True)
+
+
+def test_bulk_delete_connections(db, dc, rack, user):
+    section("Work Orders: Bulk Delete Connections")
+    from app.services.recycle_bin import list_deleted_connections
+
+    _set_rb(db, True)
+
+    wo = wo_svc.create_work_order(
+        db, name="_SIM Bulk Delete Conns WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo.id)
+
+    conn_ids = []
+    for i in range(3):
+        conn_data = {
+            "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+            "device_rack_name_raw": rack.name, "device_rack_u": "10",
+            "device_slot": "1a", "device_port": f"bulk{i}",
+            "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+            "switch_slot": "1", "switch_port": f"bulk{i}",
+            "install_status": "pending",
+        }
+        conn, _, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
+        conn_ids.append(conn.id)
+
+    count = wo_svc.soft_delete_connections_bulk(db, wo.id, conn_ids, user.id)
+    check("Bulk delete connections: returned count matches all 3", count == 3)
+
+    for cid in conn_ids:
+        obj = db.get(Connection, cid)
+        check(f"Bulk delete connections: connection {cid} soft-deleted", obj.deleted_at is not None)
+
+    deleted_list = list_deleted_connections(db)
+    check("Bulk delete connections: all 3 appear in recycle bin list",
+          set(conn_ids).issubset({c.id for c in deleted_list}))
+
+    # Re-running with the same (now-deleted) ids should not double-process
+    count2 = wo_svc.soft_delete_connections_bulk(db, wo.id, conn_ids, user.id)
+    check("Bulk delete connections: already-deleted ids are not re-processed", count2 == 0)
+
+    # rb disabled path
+    _set_rb(db, False)
+    conn_data2 = {
+        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+        "device_rack_name_raw": rack.name, "device_rack_u": "10",
+        "device_slot": "1a", "device_port": "bulkhard",
+        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "bulkhard",
+        "install_status": "pending",
+    }
+    conn2, _, _ = wo_svc.create_connection(db, wo.id, conn_data2, user.id)
+    conn2_id = conn2.id
+    count3 = wo_svc.soft_delete_connections_bulk(db, wo.id, [conn2_id], user.id)
+    # The bulk delete used a synchronize_session=False query, so conn2's identity-mapped
+    # instance is stale — query fresh rather than touching it via db.get()/attribute access.
+    still_there = db.query(Connection.id).filter(Connection.id == conn2_id).first()
+    check("Bulk delete connections (rb disabled): hard-deleted",
+          count3 == 1 and still_there is None)
+    _set_rb(db, True)
+
+
 def test_tuning_validation():
     section("Admin: Tuning Validation Logic")
     import json
@@ -1272,6 +1438,9 @@ def main():
         test_recycle_bin_purge(db, dc, rack, user)
         test_recycle_bin_toggle(db, dc, rack, user)
         test_recycle_bin_system(db, user)
+        test_bulk_delete_racks(db, dc, user)
+        test_bulk_delete_systems(db, rack, user)
+        test_bulk_delete_connections(db, dc, rack, user)
         test_tuning_validation()
         test_admin_templates(db, dc, rack, user)
     except Exception as e:

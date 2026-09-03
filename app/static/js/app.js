@@ -48,3 +48,25 @@ function autocomplete(url, initId, initLabel) {
     }
   }
 }
+
+// ── Bulk select (inventory list views: racks, systems) ───────────────────
+// Usage: row checkboxes carry class="<cbClass>" and a form="<formId>" attribute
+// pointing at a hidden <form> elsewhere on the page; a header checkbox calls
+// toggleSelectAll(cbClass, this.checked), and the submit button is
+// id="<cbClass>-delete-btn" (disabled until something's checked).
+function toggleSelectAll(cbClass, checked) {
+  document.querySelectorAll('.' + cbClass).forEach(cb => { cb.checked = checked; });
+  updateBulkDeleteBtn(cbClass);
+}
+
+function updateBulkDeleteBtn(cbClass) {
+  const count = document.querySelectorAll('.' + cbClass + ':checked').length;
+  const btn = document.getElementById(cbClass + '-delete-btn');
+  if (btn) btn.disabled = count === 0;
+}
+
+function confirmBulkDelete(form, cbClass, label) {
+  const count = document.querySelectorAll('.' + cbClass + ':checked').length;
+  if (count === 0) return false;
+  return confirm(`Delete ${count} selected ${label}${count === 1 ? '' : 's'}? This cannot be undone.`);
+}

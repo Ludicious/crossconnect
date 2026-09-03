@@ -170,6 +170,32 @@ def delete_rack(db: Session, rack: Rack, user_id: Optional[int] = None) -> None:
     db.commit()
 
 
+def delete_racks_bulk(db: Session, rack_ids: list[int], user_id: Optional[int] = None) -> dict:
+    """
+    Bulk-delete racks, reusing delete_rack()'s validation/soft-delete logic per rack
+    so contents-check and recycle_bin_enabled gating stay in one place.
+    Returns {"deleted": [ids], "skipped": [{"id", "reason"}]}.
+    """
+    rack_ids = list(dict.fromkeys(rack_ids))  # de-dupe, preserve order
+    racks = {r.id: r for r in db.query(Rack).filter(
+        Rack.id.in_(rack_ids), Rack.deleted_at.is_(None)
+    ).all()}
+
+    deleted: list[int] = []
+    skipped: list[dict] = []
+    for rid in rack_ids:
+        rack = racks.get(rid)
+        if rack is None:
+            skipped.append({"id": rid, "reason": "Not found or already deleted."})
+            continue
+        try:
+            delete_rack(db, rack, user_id=user_id)
+            deleted.append(rid)
+        except ValueError as e:
+            skipped.append({"id": rid, "reason": str(e)})
+    return {"deleted": deleted, "skipped": skipped}
+
+
 # ── Systems ───────────────────────────────────────────────────────────────
 
 def list_systems(db: Session, search: str = "") -> list[System]:
@@ -228,6 +254,32 @@ def delete_system(db: Session, system: System, user_id: Optional[int] = None) ->
     else:
         db.delete(system)
     db.commit()
+
+
+def delete_systems_bulk(db: Session, system_ids: list[int], user_id: Optional[int] = None) -> dict:
+    """
+    Bulk-delete systems, reusing delete_system()'s validation/soft-delete logic per
+    system so the active-devices check and recycle_bin_enabled gating stay in one place.
+    Returns {"deleted": [ids], "skipped": [{"id", "reason"}]}.
+    """
+    system_ids = list(dict.fromkeys(system_ids))  # de-dupe, preserve order
+    systems = {s.id: s for s in db.query(System).filter(
+        System.id.in_(system_ids), System.deleted_at.is_(None)
+    ).all()}
+
+    deleted: list[int] = []
+    skipped: list[dict] = []
+    for sid in system_ids:
+        system = systems.get(sid)
+        if system is None:
+            skipped.append({"id": sid, "reason": "Not found or already deleted."})
+            continue
+        try:
+            delete_system(db, system, user_id=user_id)
+            deleted.append(sid)
+        except ValueError as e:
+            skipped.append({"id": sid, "reason": str(e)})
+    return {"deleted": deleted, "skipped": skipped}
 
 
 # ── Devices ───────────────────────────────────────────────────────────────

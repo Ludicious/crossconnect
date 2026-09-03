@@ -33,18 +33,40 @@
 <div class="row g-4">
   <!-- Racks -->
   <div class="col-lg-8">
+    {% if user.role in ['architect','admin'] %}
+    <form id="racks-bulk-form" method="post" action="/inventory/racks/bulk-delete"
+          onsubmit="return confirmBulkDelete(this, 'rack-cb', 'rack')">
+      <input type="hidden" name="redirect_to" value="/inventory/datacenters/{{ dc.id }}">
+    </form>
+    {% endif %}
     <div class="card border-0 shadow-sm">
       <div class="card-header d-flex justify-content-between align-items-center py-2">
         <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em">Racks</span>
-        <span class="badge bg-secondary">{{ racks|length }}</span>
+        <div class="d-flex align-items-center gap-2">
+          {% if user.role in ['architect','admin'] and racks %}
+          <button type="submit" form="racks-bulk-form" id="rack-cb-delete-btn"
+                  class="btn btn-outline-danger btn-sm py-0 px-2" disabled>
+            <i class="bi bi-trash me-1"></i>Delete Selected
+          </button>
+          {% endif %}
+          <span class="badge bg-secondary">{{ racks|length }}</span>
+        </div>
       </div>
       <div class="card-body p-0">
         {% if racks %}
         <table class="table table-hover mb-0 small">
-          <thead><tr><th>Name</th><th>Grid</th><th>Size (U)</th><th>Devices</th><th>Switches</th><th></th></tr></thead>
+          <thead><tr>
+            {% if user.role in ['architect','admin'] %}
+            <th style="width:24px"><input type="checkbox" class="form-check-input" onchange="toggleSelectAll('rack-cb', this.checked)"></th>
+            {% endif %}
+            <th>Name</th><th>Grid</th><th>Size (U)</th><th>Devices</th><th>Switches</th><th></th></tr></thead>
           <tbody>
           {% for rack in racks %}
           <tr>
+            {% if user.role in ['architect','admin'] %}
+            <td><input type="checkbox" class="form-check-input rack-cb" name="rack_ids" value="{{ rack.id }}"
+                       form="racks-bulk-form" onchange="updateBulkDeleteBtn('rack-cb')"></td>
+            {% endif %}
             <td><a href="/inventory/racks/{{ rack.id }}" class="text-decoration-none text-light fw-semibold">{{ rack.name }}</a></td>
             <td class="mono text-muted">{{ rack.grid_position or '—' }}</td>
             <td>{{ rack.total_ru }}U</td>

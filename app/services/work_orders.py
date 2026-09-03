@@ -469,3 +469,27 @@ def soft_delete_connection(db: Session, conn: Connection, user_id: int) -> None:
     else:
         db.delete(conn)
     db.commit()
+
+
+def soft_delete_connections_bulk(db: Session, wo_id: int, conn_ids: list[int], user_id: int) -> int:
+    """Bulk soft/hard delete of connection rows within a work order. Returns count deleted."""
+    if not conn_ids:
+        return 0
+    ids_to_delete = [
+        c.id for c in db.query(Connection.id).filter(
+            Connection.id.in_(conn_ids),
+            Connection.work_order_id == wo_id,
+            Connection.deleted_at.is_(None),
+        ).all()
+    ]
+    if not ids_to_delete:
+        return 0
+    write_audit(db, user_id, "medium", "connection", None, "bulk_delete",
+                detail=f"WO {wo_id}: {len(ids_to_delete)} row(s) — ids {ids_to_delete}")
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        db.query(Connection).filter(Connection.id.in_(ids_to_delete)).update(
+            {"deleted_at": datetime.utcnow(), "deleted_by": user_id}, synchronize_session=False)
+    else:
+        db.query(Connection).filter(Connection.id.in_(ids_to_delete)).delete(synchronize_session=False)
+    db.commit()
+    return len(ids_to_delete)

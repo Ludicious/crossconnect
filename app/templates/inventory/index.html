@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Inventory — CrossConnect{% endblock %}
 {% block content %}
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h4 class="fw-bold mb-0"><i class="bi bi-server me-2 text-primary"></i>Inventory</h4>
   {% if user.role in ['architect','admin'] %}
@@ -65,18 +67,40 @@
 
   <!-- Systems -->
   <div class="col-lg-5">
+    {% if user.role in ['architect','admin'] %}
+    <form id="systems-bulk-form" method="post" action="/inventory/systems/bulk-delete"
+          onsubmit="return confirmBulkDelete(this, 'system-cb', 'system')">
+      <input type="hidden" name="redirect_to" value="/inventory">
+    </form>
+    {% endif %}
     <div class="card border-0 shadow-sm">
       <div class="card-header d-flex justify-content-between align-items-center py-2">
         <span class="fw-semibold small text-uppercase" style="letter-spacing:.05em">Systems</span>
-        <span class="badge bg-secondary">{{ systems|length }}</span>
+        <div class="d-flex align-items-center gap-2">
+          {% if user.role in ['architect','admin'] and systems %}
+          <button type="submit" form="systems-bulk-form" id="system-cb-delete-btn"
+                  class="btn btn-outline-danger btn-sm py-0 px-2" disabled>
+            <i class="bi bi-trash me-1"></i>Delete Selected
+          </button>
+          {% endif %}
+          <span class="badge bg-secondary">{{ systems|length }}</span>
+        </div>
       </div>
       <div class="card-body p-0">
         {% if systems %}
         <table class="table table-hover mb-0 small">
-          <thead><tr><th>Name</th><th>Type</th><th>Devices</th></tr></thead>
+          <thead><tr>
+            {% if user.role in ['architect','admin'] %}
+            <th style="width:24px"><input type="checkbox" class="form-check-input" onchange="toggleSelectAll('system-cb', this.checked)"></th>
+            {% endif %}
+            <th>Name</th><th>Type</th><th>Devices</th></tr></thead>
           <tbody>
           {% for s in systems %}
           <tr>
+            {% if user.role in ['architect','admin'] %}
+            <td><input type="checkbox" class="form-check-input system-cb" name="system_ids" value="{{ s.id }}"
+                       form="systems-bulk-form" onchange="updateBulkDeleteBtn('system-cb')"></td>
+            {% endif %}
             <td><a href="/inventory/systems/{{ s.id }}" class="text-decoration-none text-light">{{ s.name }}</a></td>
             <td><span class="badge bg-secondary">{{ s.system_type }}</span></td>
             <td>{{ s.devices|length }}</td>
