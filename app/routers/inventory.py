@@ -653,8 +653,7 @@ async def pp_update(
     db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     _arch_or_admin(request, db)
-    from app.models.inventory import PatchPanel
-    pp = db.get(PatchPanel, pp_id)
+    pp = svc.get_patch_panel(db, pp_id)
     if not pp:
         raise HTTPException(404)
     svc.update_patch_panel(db, pp, user_id=user.id, name=name, starting_ru=starting_ru, notes=notes)
@@ -664,8 +663,7 @@ async def pp_update(
 @router.post("/patch-panels/{pp_id}/delete")
 async def pp_delete(pp_id: int, request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
     _arch_or_admin(request, db)
-    from app.models.inventory import PatchPanel
-    pp = db.get(PatchPanel, pp_id)
+    pp = svc.get_patch_panel(db, pp_id)
     if not pp:
         raise HTTPException(404)
     rack_id = pp.rack_id

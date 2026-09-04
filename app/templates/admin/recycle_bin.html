@@ -15,14 +15,18 @@
 </div>
 {% endif %}
 
-<!-- Tab navigation -->
+{% if error %}<div class="alert alert-danger small py-2">{{ error }}</div>{% endif %}
+
+<!-- Tab navigation — ordered so each type's dependents (Devices/Switches/Patch
+     Panels) appear before the parent (Racks) that purge-ordering blocks on. -->
 <ul class="nav nav-tabs mb-3">
   {% set tabs = [
     ('connections', 'bi-plug', 'Connections'),
     ('work_orders', 'bi-clipboard-check', 'Work Orders'),
     ('devices', 'bi-server', 'Devices'),
-    ('racks', 'bi-hdd-rack', 'Racks'),
     ('switches', 'bi-diagram-2', 'Switches'),
+    ('patch_panels', 'bi-grid-3x3-gap', 'Patch Panels'),
+    ('racks', 'bi-hdd-rack', 'Racks'),
     ('systems', 'bi-diagram-3', 'Systems'),
   ] %}
   {% for tab_id, icon, label in tabs %}
@@ -324,6 +328,53 @@
 {% else %}
 <div class="text-center text-muted py-5">
   <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted systems.
+</div>
+{% endif %}
+
+{% elif tab == 'patch_panels' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h5 class="mb-0">Deleted Patch Panels ({{ deleted_patch_panels | length }})</h5>
+  {% if deleted_patch_panels %}
+  <form method="post" action="/admin/recycle-bin/purge/patch_panels"
+        onsubmit="return confirm('Permanently delete ALL {{ deleted_patch_panels | length }} deleted patch panels?')">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <i class="bi bi-trash me-1"></i>Purge All ({{ deleted_patch_panels | length }})
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% if deleted_patch_panels %}
+<div class="table-responsive">
+  <table class="table table-sm table-hover">
+    <thead><tr>
+      <th>ID</th><th>Name</th><th>Rack</th>
+      <th>Deleted At</th><th>Deleted By</th><th>Actions</th>
+    </tr></thead>
+    <tbody>
+    {% for pp in deleted_patch_panels %}
+    <tr>
+      <td>{{ pp.id }}</td>
+      <td>{{ pp.name }}</td>
+      <td>{{ pp.rack.name if pp.rack else '—' }}</td>
+      <td class="small">{{ pp.deleted_at.strftime("%Y-%m-%d %H:%M") if pp.deleted_at else '—' }}</td>
+      <td class="small">{{ pp.deleter.display_name if pp.deleter else (pp.deleted_by or '—') }}</td>
+      <td class="d-flex gap-1">
+        <form method="post" action="/admin/recycle-bin/restore/patch_panels/{{ pp.id }}">
+          <button type="submit" class="btn btn-sm btn-success">Restore</button>
+        </form>
+        <form method="post" action="/admin/recycle-bin/delete/patch_panels/{{ pp.id }}"
+              onsubmit="return confirm('Permanently delete patch panel {{ pp.id }}?')">
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+  <i class="bi bi-check-circle fs-3 d-block mb-2"></i>No deleted patch panels.
 </div>
 {% endif %}
 

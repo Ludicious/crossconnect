@@ -120,6 +120,16 @@ def transition_status(db: Session, wo: WorkOrder, new_status: str, user: User) -
             Connection.deleted_at.is_(None),
         ).update({"deleted_at": now, "deleted_by": user.id})
 
+    # On cancel: soft-delete all A/C-action connections — they never actually
+    # happened, mirroring how completion clears R-action rows.
+    if new_status == "cancelled":
+        now = datetime.utcnow()
+        db.query(Connection).filter(
+            Connection.work_order_id == wo.id,
+            Connection.action.in_(["A", "C"]),
+            Connection.deleted_at.is_(None),
+        ).update({"deleted_at": now, "deleted_by": user.id})
+
     old_status = wo.status
     wo.status = new_status
     write_audit(db, user.id, "work_orders", "work_order", wo.id, "status_change",

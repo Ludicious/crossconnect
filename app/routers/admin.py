@@ -219,7 +219,7 @@ async def admin_tuning_post(request: Request, db: Session = Depends(get_db),
 
 # ── Recycle Bin ───────────────────────────────────────────────────────────
 
-VALID_TABS = {"connections", "work_orders", "devices", "racks", "switches", "systems"}
+VALID_TABS = {"connections", "work_orders", "devices", "racks", "switches", "systems", "patch_panels"}
 
 
 @router.get("/recycle-bin", response_class=HTMLResponse)
@@ -229,6 +229,7 @@ async def admin_recycle_bin(request: Request, db: Session = Depends(get_db),
     tab = request.query_params.get("tab", "connections")
     if tab not in VALID_TABS:
         tab = "connections"
+    error = request.query_params.get("error")
 
     recycle_bin_enabled = get_bool_setting(db, "recycle_bin_enabled")
     deleted_counts = rb_svc.get_deleted_counts(db)
@@ -239,10 +240,12 @@ async def admin_recycle_bin(request: Request, db: Session = Depends(get_db),
     deleted_racks = rb_svc.list_deleted_racks(db) if tab == "racks" else []
     deleted_switches = rb_svc.list_deleted_switches(db) if tab == "switches" else []
     deleted_systems = rb_svc.list_deleted_systems(db) if tab == "systems" else []
+    deleted_patch_panels = rb_svc.list_deleted_patch_panels(db) if tab == "patch_panels" else []
 
     return templates.TemplateResponse(request=request, name="admin/recycle_bin.html", context={
         "user": user,
         "tab": tab,
+        "error": error,
         "recycle_bin_enabled": recycle_bin_enabled,
         "deleted_connections": deleted_connections,
         "deleted_work_orders": deleted_work_orders,
@@ -250,6 +253,7 @@ async def admin_recycle_bin(request: Request, db: Session = Depends(get_db),
         "deleted_racks": deleted_racks,
         "deleted_switches": deleted_switches,
         "deleted_systems": deleted_systems,
+        "deleted_patch_panels": deleted_patch_panels,
         "deleted_counts": deleted_counts,
     })
 
@@ -272,6 +276,8 @@ async def admin_recycle_bin_restore(entity_type: str, item_id: int,
             rb_svc.restore_switch(db, item_id)
         elif entity_type == "systems":
             rb_svc.restore_system(db, item_id)
+        elif entity_type == "patch_panels":
+            rb_svc.restore_patch_panel(db, item_id)
         else:
             raise HTTPException(400, f"Unknown entity type: {entity_type}")
     except ValueError as e:
@@ -297,6 +303,8 @@ async def admin_recycle_bin_delete(entity_type: str, item_id: int,
             rb_svc.hard_delete_switch(db, item_id)
         elif entity_type == "systems":
             rb_svc.hard_delete_system(db, item_id)
+        elif entity_type == "patch_panels":
+            rb_svc.hard_delete_patch_panel(db, item_id)
         else:
             raise HTTPException(400, f"Unknown entity type: {entity_type}")
     except ValueError as e:
@@ -310,9 +318,14 @@ async def admin_recycle_bin_purge(entity_type: str,
                                    user=Depends(get_current_user)):
     _require_admin(user)
     try:
-        rb_svc.purge_all(db, entity_type)
+        result = rb_svc.purge_all(db, entity_type)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if result["skipped"]:
+        from urllib.parse import quote
+        reasons = "; ".join(s["reason"] for s in result["skipped"])
+        return RedirectResponse(
+            f"/admin/recycle-bin?tab={entity_type}&error={quote(reasons)}", status_code=302)
     return RedirectResponse(f"/admin/recycle-bin?tab={entity_type}", status_code=302)
 
 

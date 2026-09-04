@@ -107,6 +107,10 @@ def upsert_contacts(db: Session, dc: Datacenter, contacts_data: list[dict]) -> N
 
 def list_racks(db: Session, dc_id: int) -> list[Rack]:
     return (db.query(Rack)
+            .options(
+                joinedload(Rack.devices.and_(Device.deleted_at.is_(None))),
+                joinedload(Rack.switches.and_(Switch.deleted_at.is_(None))),
+            )
             .filter(Rack.datacenter_id == dc_id, Rack.deleted_at.is_(None))
             .order_by(Rack.name)
             .all())
@@ -114,9 +118,9 @@ def list_racks(db: Session, dc_id: int) -> list[Rack]:
 
 def get_rack(db: Session, rack_id: int) -> Optional[Rack]:
     return db.query(Rack).options(
-        joinedload(Rack.devices).joinedload(Device.system),
-        joinedload(Rack.switches),
-        joinedload(Rack.patch_panels),
+        joinedload(Rack.devices.and_(Device.deleted_at.is_(None))).joinedload(Device.system),
+        joinedload(Rack.switches.and_(Switch.deleted_at.is_(None))),
+        joinedload(Rack.patch_panels.and_(PatchPanel.deleted_at.is_(None))),
     ).filter(Rack.id == rack_id, Rack.deleted_at.is_(None)).first()
 
 
@@ -158,8 +162,28 @@ def update_rack(db: Session, rack: Rack, user_id: Optional[int] = None, **kwargs
 def delete_rack(db: Session, rack: Rack, user_id: Optional[int] = None) -> None:
     active_devices = [d for d in rack.devices if d.deleted_at is None]
     active_switches = [s for s in rack.switches if s.deleted_at is None]
-    if active_devices or active_switches or rack.patch_panels:
-        raise ValueError("Cannot delete rack that contains devices, switches, or patch panels.")
+    if active_devices or active_switches:
+        raise ValueError("Cannot delete rack that contains devices or switches.")
+
+    # Patch panels block deletion only if BOTH the panel is active AND there's
+    # active connection activity referencing this rack's patch side — a panel
+    # with no active connections must not block rack deletion (this is what
+    # unblocks the pilot racks; see DESIGN_DECISIONS.md). Connection rows don't
+    # carry a direct panel_id FK yet (patch position is rack + free-text module/
+    # port), so this is scoped to the rack rather than the individual panel.
+    active_panels = [p for p in rack.patch_panels if p.deleted_at is None]
+    if active_panels:
+        from app.models.connection import Connection
+        has_active_patch_connections = db.query(Connection).filter(
+            Connection.deleted_at.is_(None),
+            or_(Connection.device_patch_rack_id == rack.id,
+                Connection.switch_patch_rack_id == rack.id),
+        ).first() is not None
+        if has_active_patch_connections:
+            raise ValueError(
+                "Cannot delete rack: active patch panel(s) have active connections referencing them."
+            )
+
     write_audit(db, user_id, "wide", "rack", rack.id, "delete",
                 detail=f"{rack.name} dc_id={rack.datacenter_id}")
     if get_bool_setting(db, "recycle_bin_enabled", default=True):
@@ -400,7 +424,15 @@ def delete_switch(db: Session, switch: Switch, user_id: Optional[int] = None) ->
 # ── Patch Panels ──────────────────────────────────────────────────────────
 
 def list_patch_panels(db: Session, rack_id: int) -> list[PatchPanel]:
-    return db.query(PatchPanel).filter(PatchPanel.rack_id == rack_id).order_by(PatchPanel.name).all()
+    return db.query(PatchPanel).filter(
+        PatchPanel.rack_id == rack_id, PatchPanel.deleted_at.is_(None)
+    ).order_by(PatchPanel.name).all()
+
+
+def get_patch_panel(db: Session, pp_id: int) -> Optional[PatchPanel]:
+    return db.query(PatchPanel).filter(
+        PatchPanel.id == pp_id, PatchPanel.deleted_at.is_(None)
+    ).first()
 
 
 def create_patch_panel(db: Session, rack_id: int, name: str,
@@ -430,7 +462,11 @@ def update_patch_panel(db: Session, pp: PatchPanel, user_id: Optional[int] = Non
 def delete_patch_panel(db: Session, pp: PatchPanel, user_id: Optional[int] = None) -> None:
     write_audit(db, user_id, "wide", "patch_panel", pp.id, "delete",
                 detail=f"{pp.name} rack_id={pp.rack_id}")
-    db.delete(pp)
+    if get_bool_setting(db, "recycle_bin_enabled", default=True):
+        pp.deleted_at = datetime.utcnow()
+        pp.deleted_by = user_id
+    else:
+        db.delete(pp)
     db.commit()
 
 
@@ -672,6 +708,7 @@ def get_patch_panel_by_name_in_rack(db: Session, rack_id: int, name: str) -> "Op
     return db.query(PatchPanel).filter(
         PatchPanel.rack_id == rack_id,
         func.lower(PatchPanel.name) == name.lower(),
+        PatchPanel.deleted_at.is_(None),
     ).first()
 
 

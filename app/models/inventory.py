@@ -183,5 +183,56 @@ class PatchPanel(Base):
     starting_ru: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     rack: Mapped["Rack"] = relationship("Rack", back_populates="patch_panels")
+    deleter: Mapped[Optional["User"]] = relationship("User", foreign_keys="[PatchPanel.deleted_by]")
+
+
+class PatchPortFlag(Base):
+    """
+    Sparse table for manually-flagged (red/broken) ports. One row per currently
+    flagged panel+port — presence of a row IS the flagged state; clearing a flag
+    means deleting the row (no separate resolved/cleared column). Everything else
+    about port state (green/yellow/blue) is derived from Connection rows, never
+    stored — see DESIGN_DECISIONS.md.
+    """
+    __tablename__ = "patch_port_flags"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    panel_id: Mapped[int] = mapped_column(ForeignKey("patch_panels.id"), nullable=False)
+    port: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    set_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    panel: Mapped["PatchPanel"] = relationship("PatchPanel")
+    setter: Mapped[Optional["User"]] = relationship("User", foreign_keys="[PatchPortFlag.set_by]")
+
+    __table_args__ = (
+        UniqueConstraint("panel_id", "port", name="uq_patch_port_flag_panel_port"),
+    )
+
+
+class Trunk(Base):
+    """
+    Panel-to-panel structured cabling link. Lazily populated by connection
+    discovery (not built in this session — table starts empty, no backfill).
+    Independent of the connection row that discovered it: discovered_via_connection_id
+    is nullable so the trunk survives deletion of that row.
+    """
+    __tablename__ = "trunks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    panel_a_id: Mapped[int] = mapped_column(ForeignKey("patch_panels.id"), nullable=False)
+    port_a: Mapped[str] = mapped_column(String(32), nullable=False)
+    panel_b_id: Mapped[int] = mapped_column(ForeignKey("patch_panels.id"), nullable=False)
+    port_b: Mapped[str] = mapped_column(String(32), nullable=False)
+    discovered_via_connection_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("connections.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    panel_a: Mapped["PatchPanel"] = relationship("PatchPanel", foreign_keys=[panel_a_id])
+    panel_b: Mapped["PatchPanel"] = relationship("PatchPanel", foreign_keys=[panel_b_id])

@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db import SessionLocal
 from app.models.user import User
-from app.models.inventory import Datacenter, DCContact, Rack, System, Device, Switch, DeviceType
+from app.models.inventory import Datacenter, DCContact, Rack, System, Device, Switch, DeviceType, PatchPanel, Trunk
 from app.models.work_order import WorkOrder
 from app.models.connection import Connection
 from app.models.audit import AuditLog
@@ -46,6 +46,7 @@ RESULTS: list[tuple[str, bool, str]] = []
 CREATED_IDS: dict[str, list[int]] = {
     "datacenter": [], "rack": [], "system": [], "device": [],
     "switch": [], "device_type": [], "work_order": [], "user": [],
+    "patch_panel": [], "trunk": [],
 }
 
 
@@ -103,6 +104,16 @@ def pre_run_cleanup(db):
     db.flush()
     db.query(Device).filter(Device.name.like("_SIM%")).delete()
     db.query(System).filter(System.name.like("_SIM%")).delete()
+
+    # Trunks before patch panels (NOT NULL FK to patch_panels), patch panels
+    # before racks (NOT NULL FK to racks) — same ordering the purge guard now
+    # enforces at runtime.
+    stale_pp_ids = [pp.id for pp in db.query(PatchPanel).filter(PatchPanel.name.like("_SIM%")).all()]
+    if stale_pp_ids:
+        db.query(Trunk).filter(
+            (Trunk.panel_a_id.in_(stale_pp_ids)) | (Trunk.panel_b_id.in_(stale_pp_ids))
+        ).delete(synchronize_session=False)
+        db.query(PatchPanel).filter(PatchPanel.id.in_(stale_pp_ids)).delete(synchronize_session=False)
 
     stale_racks = db.query(Rack).filter(Rack.name.like("_SIM%")).all()
     for r in stale_racks:
@@ -974,8 +985,10 @@ def test_recycle_bin_purge(db, dc, rack, user):
     conn_id = conn.id
     wo_svc.soft_delete_connection(db, conn, user.id)
 
-    count = purge_all(db, "connections")
-    check("Recycle bin purge: returned count > 0", count > 0)
+    result = purge_all(db, "connections")
+    check("Recycle bin purge: at least one connection deleted", len(result["deleted"]) > 0)
+    check("Recycle bin purge: our connection reported deleted", conn_id in result["deleted"])
+    check("Recycle bin purge: nothing skipped", len(result["skipped"]) == 0)
 
     still_there = db.get(Connection, conn_id)
     check("Recycle bin purge: connection permanently gone from DB", still_there is None)
@@ -984,33 +997,37 @@ def test_recycle_bin_purge(db, dc, rack, user):
 def test_recycle_bin_toggle(db, dc, rack, user):
     section("Admin: Recycle Bin Toggle (recycle_bin_enabled=false)")
 
-    _set_rb(db, False)
+    try:
+        _set_rb(db, False)
 
-    wo = wo_svc.create_work_order(
-        db, name="_SIM RB Toggle WO", datacenter_id=dc.id,
-        work_type="install", created_by=user.id,
-    )
-    CREATED_IDS["work_order"].append(wo.id)
+        wo = wo_svc.create_work_order(
+            db, name="_SIM RB Toggle WO", datacenter_id=dc.id,
+            work_type="install", created_by=user.id,
+        )
+        CREATED_IDS["work_order"].append(wo.id)
 
-    conn_data = {
-        "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
-        "device_rack_name_raw": rack.name, "device_rack_u": "10",
-        "device_slot": "1a", "device_port": "toggle1",
-        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
-        "switch_slot": "1", "switch_port": "toggle1",
-        "install_status": "pending",
-    }
-    conn, _, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
-    conn_id = conn.id
+        conn_data = {
+            "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+            "device_rack_name_raw": rack.name, "device_rack_u": "10",
+            "device_slot": "1a", "device_port": "toggle1",
+            "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+            "switch_slot": "1", "switch_port": "toggle1",
+            "install_status": "pending",
+        }
+        conn, _, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
+        conn_id = conn.id
 
-    wo_svc.soft_delete_connection(db, conn, user.id)
+        wo_svc.soft_delete_connection(db, conn, user.id)
 
-    still_there = db.get(Connection, conn_id)
-    check("Toggle: connection hard-deleted when recycle_bin_enabled=false",
-          still_there is None)
-
-    # Restore default
-    _set_rb(db, True)
+        still_there = db.get(Connection, conn_id)
+        check("Toggle: connection hard-deleted when recycle_bin_enabled=false",
+              still_there is None)
+    finally:
+        # Wrapped because _set_rb() persists to the real app_settings row — a
+        # crash mid-toggle here would otherwise leave it stuck off for every
+        # later test in the run (and the next run, since it's not reset by
+        # pre_run_cleanup either).
+        _set_rb(db, True)
 
 
 def test_recycle_bin_system(db, user):
@@ -1041,10 +1058,14 @@ def test_recycle_bin_system(db, user):
     check("System back in list_systems after restore",
           any(s.id == system_id for s in inv_svc.list_systems(db)))
 
-    # Re-delete then purge
+    # Re-delete then purge. Note: purge_all("systems") purges every soft-deleted
+    # system, not just this one — on a real, already-populated DB other rows
+    # may legitimately be skipped by the dependency guard (e.g. leftover
+    # soft-deleted devices from earlier manual testing), so we only assert on
+    # our own row rather than requiring a clean sweep of the whole table.
     inv_svc.delete_system(db, system, user_id=user.id)
-    count = purge_all(db, "systems")
-    check("Recycle bin purge: systems count > 0", count > 0)
+    result = purge_all(db, "systems")
+    check("Recycle bin purge: system reported deleted", system_id in result["deleted"])
 
     still_there = db.get(System, system_id)
     check("Recycle bin purge: system permanently gone from DB", still_there is None)
@@ -1095,11 +1116,13 @@ def test_bulk_delete_racks(db, dc, user):
     # the pre-existing hard-delete-with-orphaned-child-rows issue noted above
     r4 = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Bulk Rack 4 (rb-off)", user_id=user.id)
     CREATED_IDS["rack"].append(r4.id)
-    _set_rb(db, False)
-    result2 = inv_svc.delete_racks_bulk(db, [r4.id], user_id=user.id)
-    check("Bulk delete racks (rb disabled): rack hard-deleted, not soft-deleted",
-          r4.id in result2["deleted"] and db.get(Rack, r4.id) is None)
-    _set_rb(db, True)
+    try:
+        _set_rb(db, False)
+        result2 = inv_svc.delete_racks_bulk(db, [r4.id], user_id=user.id)
+        check("Bulk delete racks (rb disabled): rack hard-deleted, not soft-deleted",
+              r4.id in result2["deleted"] and db.get(Rack, r4.id) is None)
+    finally:
+        _set_rb(db, True)
 
 
 def test_bulk_delete_systems(db, rack, user):
@@ -1148,11 +1171,13 @@ def test_bulk_delete_systems(db, rack, user):
     # blocked-system fixture above
     s4 = inv_svc.create_system(db, name="_SIM Bulk System 4 (rb-off)", user_id=user.id)
     CREATED_IDS["system"].append(s4.id)
-    _set_rb(db, False)
-    result2 = inv_svc.delete_systems_bulk(db, [s4.id], user_id=user.id)
-    check("Bulk delete systems (rb disabled): system hard-deleted, not soft-deleted",
-          s4.id in result2["deleted"] and db.get(System, s4.id) is None)
-    _set_rb(db, True)
+    try:
+        _set_rb(db, False)
+        result2 = inv_svc.delete_systems_bulk(db, [s4.id], user_id=user.id)
+        check("Bulk delete systems (rb disabled): system hard-deleted, not soft-deleted",
+              s4.id in result2["deleted"] and db.get(System, s4.id) is None)
+    finally:
+        _set_rb(db, True)
 
 
 def test_bulk_delete_connections(db, dc, rack, user):
@@ -1196,24 +1221,333 @@ def test_bulk_delete_connections(db, dc, rack, user):
     check("Bulk delete connections: already-deleted ids are not re-processed", count2 == 0)
 
     # rb disabled path
-    _set_rb(db, False)
-    conn_data2 = {
+    try:
+        _set_rb(db, False)
+        conn_data2 = {
+            "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+            "device_rack_name_raw": rack.name, "device_rack_u": "10",
+            "device_slot": "1a", "device_port": "bulkhard",
+            "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+            "switch_slot": "1", "switch_port": "bulkhard",
+            "install_status": "pending",
+        }
+        conn2, _, _ = wo_svc.create_connection(db, wo.id, conn_data2, user.id)
+        conn2_id = conn2.id
+        count3 = wo_svc.soft_delete_connections_bulk(db, wo.id, [conn2_id], user.id)
+        # The bulk delete used a synchronize_session=False query, so conn2's identity-mapped
+        # instance is stale — query fresh rather than touching it via db.get()/attribute access.
+        still_there = db.query(Connection.id).filter(Connection.id == conn2_id).first()
+        check("Bulk delete connections (rb disabled): hard-deleted",
+              count3 == 1 and still_there is None)
+    finally:
+        _set_rb(db, True)
+
+
+def test_patch_panel_lifecycle(db, dc, user):
+    section("Inventory: Patch Panel Soft-Delete / Restore / Purge")
+    from app.services.recycle_bin import (
+        list_deleted_patch_panels, restore_patch_panel, hard_delete_patch_panel,
+    )
+
+    try:
+        _set_rb(db, True)
+
+        r = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM PP Lifecycle Rack", user_id=user.id)
+        CREATED_IDS["rack"].append(r.id)
+
+        pp = inv_svc.create_patch_panel(db, rack_id=r.id, name="_SIM PP1", user_id=user.id)
+        CREATED_IDS["patch_panel"].append(pp.id)
+        pp_id = pp.id
+
+        inv_svc.delete_patch_panel(db, pp, user_id=user.id)
+        db.refresh(pp)
+        check("Patch panel soft-deleted (deleted_at set)", pp.deleted_at is not None)
+
+        check("Patch panel excluded from list_patch_panels after soft-delete",
+              not any(p.id == pp_id for p in inv_svc.list_patch_panels(db, r.id)))
+
+        deleted = list_deleted_patch_panels(db)
+        check("Recycle bin: soft-deleted patch panel appears in list",
+              any(p.id == pp_id for p in deleted))
+
+        restore_patch_panel(db, pp_id)
+        db.refresh(pp)
+        check("Recycle bin: patch panel restored (deleted_at=None)", pp.deleted_at is None)
+
+        check("Patch panel back in list_patch_panels after restore",
+              any(p.id == pp_id for p in inv_svc.list_patch_panels(db, r.id)))
+
+        # A trunk endpoint should block hard-delete (extends the same purge
+        # guard to the new Trunk table), not crash or silently corrupt.
+        pp2 = inv_svc.create_patch_panel(db, rack_id=r.id, name="_SIM PP2", user_id=user.id)
+        CREATED_IDS["patch_panel"].append(pp2.id)
+        trunk = Trunk(panel_a_id=pp_id, port_a="A1", panel_b_id=pp2.id, port_b="A1")
+        db.add(trunk)
+        db.commit()
+        CREATED_IDS["trunk"].append(trunk.id)
+
+        inv_svc.delete_patch_panel(db, pp, user_id=user.id)
+        expect_error(
+            "Purge blocked: patch panel still referenced by a trunk endpoint",
+            lambda: hard_delete_patch_panel(db, pp_id),
+            "trunk",
+        )
+        check("Blocked purge: patch panel row still exists (trunk still references it)",
+              db.get(PatchPanel, pp_id) is not None)
+
+        # Clear the trunk, then the purge should succeed cleanly
+        db.query(Trunk).filter(Trunk.id == trunk.id).delete()
+        db.commit()
+        CREATED_IDS["trunk"].remove(trunk.id)
+        hard_delete_patch_panel(db, pp_id)
+        check("Patch panel purge succeeds once the trunk is cleared",
+              db.get(PatchPanel, pp_id) is None)
+        CREATED_IDS["patch_panel"].remove(pp_id)
+    finally:
+        _set_rb(db, True)
+
+
+def test_rack_delete_patch_panel_guard(db, dc, user):
+    section("Inventory: Rack Delete — Patch Panel Guard")
+
+    # Case 1: active panel + an active connection referencing the rack's patch
+    # side -> blocked. This is scoped to the rack (not the individual panel) —
+    # Connection has no direct panel_id FK yet, only rack + free-text module/port.
+    r_blocked = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM PP Guard Blocked Rack", user_id=user.id)
+    CREATED_IDS["rack"].append(r_blocked.id)
+    pp_blocked = inv_svc.create_patch_panel(db, rack_id=r_blocked.id, name="_SIM PP Guard Panel", user_id=user.id)
+    CREATED_IDS["patch_panel"].append(pp_blocked.id)
+
+    wo = wo_svc.create_work_order(
+        db, name="_SIM PP Guard WO", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo.id)
+    conn_data = {
         "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
-        "device_rack_name_raw": rack.name, "device_rack_u": "10",
-        "device_slot": "1a", "device_port": "bulkhard",
-        "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
-        "switch_slot": "1", "switch_port": "bulkhard",
+        "device_rack_name_raw": r_blocked.name, "device_rack_u": "1",
+        "device_slot": "1", "device_port": "p1",
+        "device_patch_rack_name_raw": r_blocked.name, "device_patch_ru": "1",
+        "device_patch_module": pp_blocked.name, "device_patch_port": "A1",
+        "switch_rack_name_raw": r_blocked.name, "switch_rack_u": "30",
+        "switch_slot": "1", "switch_port": "ppguard1",
         "install_status": "pending",
     }
-    conn2, _, _ = wo_svc.create_connection(db, wo.id, conn_data2, user.id)
-    conn2_id = conn2.id
-    count3 = wo_svc.soft_delete_connections_bulk(db, wo.id, [conn2_id], user.id)
-    # The bulk delete used a synchronize_session=False query, so conn2's identity-mapped
-    # instance is stale — query fresh rather than touching it via db.get()/attribute access.
-    still_there = db.query(Connection.id).filter(Connection.id == conn2_id).first()
-    check("Bulk delete connections (rb disabled): hard-deleted",
-          count3 == 1 and still_there is None)
-    _set_rb(db, True)
+    conn, errs, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
+    check("PP guard fixture: connection with patch-side fields created",
+          conn is not None and not errs)
+    # create_connection() only persists the free-text _raw patch fields — the
+    # device_patch_rack_id FK is populated by the (separate, not-yet-wired-here)
+    # import hydration path. Set it directly so this test exercises the rack
+    # guard's query itself, independent of that resolution pipeline.
+    conn.device_patch_rack_id = r_blocked.id
+    db.commit()
+
+    expect_error(
+        "Rack delete blocked: active panel has an active connection referencing it",
+        lambda: inv_svc.delete_rack(db, r_blocked, user_id=user.id),
+        "patch panel",
+    )
+    check("Blocked rack: NOT soft-deleted after failed delete attempt",
+          r_blocked.deleted_at is None)
+
+    # Case 2: active panel but NO connections referencing the rack's patch side
+    # -> allowed. A panel alone must not block rack deletion (this is what
+    # unblocks the pilot racks).
+    r_clear = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM PP Guard Clear Rack", user_id=user.id)
+    CREATED_IDS["rack"].append(r_clear.id)
+    pp_clear = inv_svc.create_patch_panel(db, rack_id=r_clear.id, name="_SIM PP Guard Clear Panel", user_id=user.id)
+    CREATED_IDS["patch_panel"].append(pp_clear.id)
+
+    inv_svc.delete_rack(db, r_clear, user_id=user.id)
+    db.refresh(r_clear)
+    check("Rack delete allowed: panel with no active connections doesn't block",
+          r_clear.deleted_at is not None)
+
+
+def test_purge_guard(db, dc, rack, user):
+    section("Recycle Bin: Purge Dependency Guard (P0 fix)")
+    from app.services.recycle_bin import (
+        hard_delete_rack, hard_delete_device, hard_delete_system,
+        hard_delete_work_order, hard_delete_connection, restore_device,
+    )
+
+    try:
+        _set_rb(db, True)
+
+        # ── (a) Rack <-> Device ──────────────────────────────────────────
+        # Previously: NOT NULL crash on purge if a soft-deleted device still
+        # referenced the rack (ORM tried to null devices.rack_id, which is
+        # NOT NULL). Now: clean blocked purge with an itemized reason.
+        r = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Purge Guard Rack", user_id=user.id)
+        CREATED_IDS["rack"].append(r.id)
+        d = inv_svc.create_device(db, rack_id=r.id, name="_SIM Purge Guard Device", user_id=user.id)
+        CREATED_IDS["device"].append(d.id)
+
+        inv_svc.delete_device(db, d, user_id=user.id)   # soft-delete, row still exists
+        inv_svc.delete_rack(db, r, user_id=user.id)     # succeeds: no ACTIVE devices left
+
+        expect_error(
+            "Purge blocked: rack still referenced by an unpurged (soft-deleted) device",
+            lambda: hard_delete_rack(db, r.id),
+            "device",
+        )
+        check("Blocked rack purge: rack row still exists (not corrupted, not gone)",
+              db.get(Rack, r.id) is not None)
+
+        hard_delete_device(db, d.id)
+        CREATED_IDS["device"].remove(d.id)
+        hard_delete_rack(db, r.id)
+        CREATED_IDS["rack"].remove(r.id)
+        check("Rack purge succeeds once its device is purged first",
+              db.get(Rack, r.id) is None)
+
+        # ── (b) System <-> Device — the serious one ──────────────────────
+        # Previously: purge silently NULLed device.system_id on a LIVE, active
+        # device — no error, no audit trail. Reachable through ordinary usage:
+        # soft-delete device -> soft-delete system (now unblocked) -> restore
+        # device. System stays soft-deleted while the device is active again.
+        s = inv_svc.create_system(db, name="_SIM Purge Guard System", user_id=user.id)
+        CREATED_IDS["system"].append(s.id)
+        r2 = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM Purge Guard Rack2", user_id=user.id)
+        CREATED_IDS["rack"].append(r2.id)
+        d2 = inv_svc.create_device(db, rack_id=r2.id, name="_SIM Purge Guard Device2",
+                                    system_id=s.id, user_id=user.id)
+        CREATED_IDS["device"].append(d2.id)
+
+        inv_svc.delete_device(db, d2, user_id=user.id)   # system now has no active devices
+        inv_svc.delete_system(db, s, user_id=user.id)    # succeeds — system soft-deleted
+        restore_device(db, d2.id)                        # device active again
+        db.refresh(d2)
+        check("Purge guard fixture: device active again, system still soft-deleted",
+              d2.deleted_at is None and s.deleted_at is not None)
+
+        expect_error(
+            "Purge blocked: system still referenced by a live device",
+            lambda: hard_delete_system(db, s.id),
+            "device",
+        )
+        db.refresh(d2)
+        check("System purge blocked: device.system_id NOT nulled (the P0 corruption case)",
+              d2.system_id == s.id)
+        check("Blocked system purge: system row still exists",
+              db.get(System, s.id) is not None)
+
+        # Explicit reassignment (not an implicit cascade) unblocks the purge
+        inv_svc.update_device(db, d2, user_id=user.id, system_id=None)
+        hard_delete_system(db, s.id)
+        CREATED_IDS["system"].remove(s.id)
+        check("System purge succeeds once its device is explicitly reassigned",
+              db.get(System, s.id) is None)
+
+        # ── (c) WorkOrder <-> Connection ──────────────────────────────────
+        # Previously: raw SQLite FK constraint error (no ORM relationship
+        # configured for cascade, so the DB's own enforcement fired). Now:
+        # same clean blocked-purge path as (a) and (b).
+        wo = wo_svc.create_work_order(
+            db, name="_SIM Purge Guard WO", datacenter_id=dc.id,
+            work_type="install", created_by=user.id,
+        )
+        CREATED_IDS["work_order"].append(wo.id)
+        conn_data = {
+            "action": "A", "cable_type": "LC_Fiber", "purpose": "storage",
+            "device_rack_name_raw": rack.name, "device_rack_u": "1",
+            "device_slot": "1", "device_port": "pg1",
+            "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+            "switch_slot": "1", "switch_port": "pg1",
+            "install_status": "pending",
+        }
+        conn, errs, _ = wo_svc.create_connection(db, wo.id, conn_data, user.id)
+        check("Purge guard fixture (c): connection created", conn is not None and not errs)
+
+        wo_svc.delete_work_order(db, wo, user_id=user.id)  # draft -> soft-deleted, ok
+
+        expect_error(
+            "Purge blocked: work order still referenced by an active connection",
+            lambda: hard_delete_work_order(db, wo.id),
+            "connection",
+        )
+        check("Blocked WO purge: work order row still exists", db.get(WorkOrder, wo.id) is not None)
+
+        wo_svc.soft_delete_connection(db, conn, user.id)
+        expect_error(
+            "Purge still blocked: connection soft-deleted but not yet purged",
+            lambda: hard_delete_work_order(db, wo.id),
+            "connection",
+        )
+
+        hard_delete_connection(db, conn.id)
+        hard_delete_work_order(db, wo.id)
+        CREATED_IDS["work_order"].remove(wo.id)
+        check("WO purge succeeds once its connection is purged too",
+              db.get(WorkOrder, wo.id) is None)
+    finally:
+        _set_rb(db, True)
+
+
+def test_get_rack_excludes_soft_deleted(db, dc, user):
+    section("Inventory: get_rack() Excludes Soft-Deleted Devices/Switches/Panels")
+
+    r = inv_svc.create_rack(db, dc_id=dc.id, name="_SIM GetRack Filter Rack", user_id=user.id)
+    CREATED_IDS["rack"].append(r.id)
+    d = inv_svc.create_device(db, rack_id=r.id, name="_SIM GetRack Filter Device", user_id=user.id)
+    CREATED_IDS["device"].append(d.id)
+    sw = inv_svc.create_switch(db, rack_id=r.id, name="_SIM GetRack Filter Switch", user_id=user.id)
+    CREATED_IDS["switch"].append(sw.id)
+    pp = inv_svc.create_patch_panel(db, rack_id=r.id, name="_SIM GetRack Filter Panel", user_id=user.id)
+    CREATED_IDS["patch_panel"].append(pp.id)
+
+    fresh = inv_svc.get_rack(db, r.id)
+    check("get_rack(): device visible before soft-delete",
+          any(x.id == d.id for x in fresh.devices))
+    check("get_rack(): switch visible before soft-delete",
+          any(x.id == sw.id for x in fresh.switches))
+    check("get_rack(): patch panel visible before soft-delete",
+          any(x.id == pp.id for x in fresh.patch_panels))
+
+    inv_svc.delete_device(db, d, user_id=user.id)
+    inv_svc.delete_switch(db, sw, user_id=user.id)
+    inv_svc.delete_patch_panel(db, pp, user_id=user.id)
+
+    fresh2 = inv_svc.get_rack(db, r.id)
+    check("get_rack(): soft-deleted device excluded", not any(x.id == d.id for x in fresh2.devices))
+    check("get_rack(): soft-deleted switch excluded", not any(x.id == sw.id for x in fresh2.switches))
+    check("get_rack(): soft-deleted patch panel excluded",
+          not any(x.id == pp.id for x in fresh2.patch_panels))
+
+
+def test_wo_cancellation_soft_delete(db, dc, rack, user):
+    section("Work Orders: Cancellation Soft-Deletes A/C-Action Rows")
+
+    wo = wo_svc.create_work_order(
+        db, name="_SIM WO Cancel Soft Delete", datacenter_id=dc.id,
+        work_type="install", created_by=user.id,
+    )
+    CREATED_IDS["work_order"].append(wo.id)
+
+    def _mk(action, port):
+        return wo_svc.create_connection(db, wo.id, {
+            "action": action, "cable_type": "LC_Fiber", "purpose": "storage",
+            "device_rack_name_raw": rack.name, "device_rack_u": "10",
+            "device_slot": "1a", "device_port": port,
+            "switch_rack_name_raw": rack.name, "switch_rack_u": "30",
+            "switch_slot": "1", "switch_port": port,
+            "install_status": "pending",
+        }, user.id)
+
+    a_conn, errs_a, _ = _mk("A", "cancelA")
+    c_conn, errs_c, _ = _mk("C", "cancelC")
+    r_conn, errs_r, _ = _mk("R", "cancelR")
+    check("Cancel-soft-delete fixture: A/C/R rows created",
+          not errs_a and not errs_c and not errs_r)
+
+    wo_svc.transition_status(db, wo, "cancelled", user)
+    db.refresh(a_conn); db.refresh(c_conn); db.refresh(r_conn)
+
+    check("WO cancel: A-action row soft-deleted", a_conn.deleted_at is not None)
+    check("WO cancel: C-action row soft-deleted", c_conn.deleted_at is not None)
+    check("WO cancel: R-action row untouched (only complete clears R-rows)",
+          r_conn.deleted_at is None)
 
 
 def test_tuning_validation():
@@ -1337,7 +1671,7 @@ def test_admin_templates(db, dc, rack, user):
     from app.services.recycle_bin import (
         list_deleted_connections, list_deleted_work_orders,
         list_deleted_devices, list_deleted_racks, list_deleted_switches,
-        list_deleted_systems,
+        list_deleted_systems, list_deleted_patch_panels,
     )
     render("admin/recycle_bin.html", {
         "tab": "connections",
@@ -1348,6 +1682,7 @@ def test_admin_templates(db, dc, rack, user):
         "deleted_racks": [],
         "deleted_switches": [],
         "deleted_systems": [],
+        "deleted_patch_panels": [],
         "deleted_counts": deleted_counts,
     })
 
@@ -1360,6 +1695,20 @@ def test_admin_templates(db, dc, rack, user):
         "deleted_racks": [],
         "deleted_switches": [],
         "deleted_systems": list_deleted_systems(db),
+        "deleted_patch_panels": [],
+        "deleted_counts": deleted_counts,
+    })
+
+    render("admin/recycle_bin.html", {
+        "tab": "patch_panels",
+        "recycle_bin_enabled": recycle_bin_enabled,
+        "deleted_connections": [],
+        "deleted_work_orders": [],
+        "deleted_devices": [],
+        "deleted_racks": [],
+        "deleted_switches": [],
+        "deleted_systems": [],
+        "deleted_patch_panels": list_deleted_patch_panels(db),
         "deleted_counts": deleted_counts,
     })
 
@@ -1396,6 +1745,10 @@ def cleanup(db):
         db.query(System).filter(System.id == sys_id).delete()
     for dt_id in CREATED_IDS["device_type"]:
         db.query(DeviceType).filter(DeviceType.id == dt_id).delete()
+    for trunk_id in CREATED_IDS["trunk"]:  # before patch panels (NOT NULL FK)
+        db.query(Trunk).filter(Trunk.id == trunk_id).delete()
+    for pp_id in CREATED_IDS["patch_panel"]:  # before racks (NOT NULL FK)
+        db.query(PatchPanel).filter(PatchPanel.id == pp_id).delete()
     for rack_id in CREATED_IDS["rack"]:
         db.query(Rack).filter(Rack.id == rack_id).delete()
     for dc_id in CREATED_IDS["datacenter"]:
@@ -1441,6 +1794,11 @@ def main():
         test_bulk_delete_racks(db, dc, user)
         test_bulk_delete_systems(db, rack, user)
         test_bulk_delete_connections(db, dc, rack, user)
+        test_patch_panel_lifecycle(db, dc, user)
+        test_rack_delete_patch_panel_guard(db, dc, user)
+        test_purge_guard(db, dc, rack, user)
+        test_get_rack_excludes_soft_deleted(db, dc, user)
+        test_wo_cancellation_soft_delete(db, dc, rack, user)
         test_tuning_validation()
         test_admin_templates(db, dc, rack, user)
     except Exception as e:
